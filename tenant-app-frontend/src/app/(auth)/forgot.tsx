@@ -32,17 +32,17 @@ export default function Forgot() {
       {sent ? (
         <Card style={{ alignItems: 'center', gap: space.md }}>
           <IconCircle name="mail-outline" size={64} tone="success" />
-          <AppText variant="h2" style={{ textAlign: 'center' }}>Инструкция отправлена</AppText>
+          <AppText variant="h2" style={{ textAlign: 'center' }}>Запрос принят</AppText>
           <AppText variant="small" style={{ textAlign: 'center' }}>
-            Если такой пользователь есть, мы отправили ссылку для смены пароля. Проверьте почту или сообщения.
+            Автоматическая отправка писем пока не подключена. Обратитесь к администратору для восстановления доступа.
           </AppText>
           <Button title="Вернуться ко входу" onPress={nav.back} style={{ alignSelf: 'stretch' }} />
         </Card>
       ) : (
         <Card style={{ gap: space.lg }}>
-          <AppText variant="small">Введите email или телефон, указанные при регистрации.</AppText>
-          <FormInput control={control} name="contact" label="Email или телефон" autoCapitalize="none" autoCorrect={false}
-            rules={{ required: 'Введите email или телефон' }} />
+          <AppText variant="small">Введите email, указанные при регистрации.</AppText>
+          <FormInput control={control} name="contact" label="Email" autoCapitalize="none" autoCorrect={false}
+            keyboardType="email-address" rules={{ required: 'Введите email', pattern: { value: /^\S+@\S+\.\S+$/, message: 'Введите корректный email' } }} />
           {serverError ? (
             <View style={{ backgroundColor: colors.dangerBg, borderRadius: radius.sm, padding: space.md }}>
               <AppText variant="small" color={colors.danger}>{serverError}</AppText>

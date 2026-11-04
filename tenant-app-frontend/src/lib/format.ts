@@ -19,8 +19,7 @@ export function fmtDateTime(iso?: string | null): string {
 }
 
 export function fmtMoney(value: number): string {
-  const s = Math.round(value).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
-  return `${s}\u00A0₽`;
+  return new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: Number.isInteger(value) ? 0 : 2, maximumFractionDigits: 2 }).format(value);
 }
 
 export function fmtArea(value: number): string {

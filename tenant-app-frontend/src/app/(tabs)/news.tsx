@@ -55,7 +55,7 @@ export default function News() {
       >
         {(items) => {
           const sorted = [...items].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-          const urgent = sorted.find((n) => n.urgent && !n.acknowledged);
+          const urgent = sorted.find((n) => (n.requiresAcknowledgement ?? n.urgent) && !n.acknowledged);
           const list = filter === 'all' ? sorted : sorted.filter((n) => n.category === filter);
           const count = (c: NewsCategory) => items.filter((n) => n.category === c).length;
           return (

@@ -42,7 +42,6 @@ export default function Home() {
 
       {urgent ? (
         <Card
-          onPress={() => nav.push(`/news/${urgent.id}`)}
           style={{ borderColor: colors.accent, backgroundColor: colors.accentSoft, flexDirection: 'row', gap: space.md }}
         >
           <IconCircle name="warning-outline" tone="warning" />
@@ -107,7 +106,7 @@ export default function Home() {
         <SectionHeader title="Быстрые действия" />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.md }}>
           {QUICK.map((q) => (
-            <Card key={q.title} onPress={() => nav.push(q.href)} style={{ width: '47.5%', alignItems: 'center', gap: space.sm, paddingVertical: space.lg, borderRadius: radius.lg }}>
+            <Card accessibilityLabel={q.title} key={q.title} onPress={() => nav.push(q.href)} style={{ width: '47.5%', alignItems: 'center', gap: space.sm, paddingVertical: space.lg, borderRadius: radius.lg }}>
               <Icon name={q.icon} size={30} />
               <AppText variant="small" color={colors.heading} style={{ textAlign: 'center', fontWeight: '600' }}>{q.title}</AppText>
             </Card>

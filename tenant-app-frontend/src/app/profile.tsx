@@ -1,8 +1,8 @@
-import { Alert, View } from 'react-native';
+import { Alert, Platform, View } from 'react-native';
 import { useAuth } from '@/auth/AuthProvider';
 import { space } from '@/theme';
 import { useProfile } from '@/features/hooks';
-import { Async } from '@/ui/feedback';
+import { Async, useToast } from '@/ui/feedback';
 import { BackBar, Screen } from '@/ui/layout';
 import { AppText, Button, Card, Divider } from '@/ui/primitives';
 
@@ -17,13 +17,17 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export default function Profile() {
   const { signOut } = useAuth();
+  const toast = useToast();
+  const exit = () => void signOut().catch(() => toast('Вы вышли локально. Сервер не подтвердил отзыв сессии; она истечёт автоматически.', 'error'));
   const query = useProfile();
 
-  const confirmSignOut = () =>
+  const confirmSignOut = () => {
+    if (Platform.OS === 'web') { if (window.confirm('Выйти из кабинета?')) exit(); return; }
     Alert.alert('Выйти из кабинета?', 'Чтобы войти снова, понадобятся логин и пароль.', [
       { text: 'Отмена', style: 'cancel' },
-      { text: 'Выйти', style: 'destructive', onPress: () => void signOut() },
+      { text: 'Выйти', style: 'destructive', onPress: exit },
     ]);
+  };
 
   return (
     <Screen header={<BackBar title="Профиль" />}>

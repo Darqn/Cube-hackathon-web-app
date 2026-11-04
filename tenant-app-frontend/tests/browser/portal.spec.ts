@@ -1,0 +1,76 @@
+import { test, expect } from '@playwright/test';
+const base = process.env.CUBE_E2E_API!;
+const password = process.env.CUBE_E2E_PASSWORD!;
+test.describe.configure({ mode: 'serial' });
+test.setTimeout(45000);
+let token: string;
+let tenantId: string;
+let premisesId: string;
+test.beforeAll(async ({ request }) => {
+  expect(base, 'Run through scripts/verify-backend.py').toBeTruthy();
+  const call = async (path: string, data?: unknown) => {
+    const r = await request.fetch(`${base}${path}`, { method: data ? 'POST' : 'GET', data, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    expect(r.ok(), `${path}: ${await r.text()}`).toBeTruthy(); return r.json();
+  };
+  token = (await call('/auth/login', { loginName: 'frontend-admin', password: process.env.CUBE_E2E_ADMIN })).accessToken;
+  await call('/auth/register', { login: 'frontend-tenant', password, email: 'tenant@example.test', phone: '1234567', fullName: 'Тестовый арендатор', organization: 'Тестовая организация', inn: '7707083893' });
+  const [user] = await call('/admin/registration-applications');
+  await call(`/admin/registration-applications/${user.id}/approve`, { existingTenantId: null });
+  const users = await call('/admin/users'); tenantId = users.find((u: {id:string}) => u.id === user.id).tenantId;
+  const p = await call('/admin/premises', { name: 'Офис 204', type: 'Office', address: 'Тестовый адрес', building: 'Корпус А', section: 'А', floor: 2, area: 42, monthlyRent: 25000, description: 'Офис для команды', utilities: 'По счётчикам', status: 'Available' }); premisesId = p.id;
+  await call('/admin/leases', { tenantId, premisesId, number: 'TEST-001', signedOn: '2026-01-01', startsOn: '2026-01-01', endsOn: '2030-12-31' });
+  await call('/admin/meters', { tenantId, premisesId, type: 'Electricity', serialNumber: 'EL-001', unit: 'kWh', baseline: 100 });
+  await call('/admin/invoices', { tenantId, number: 'INV-001', kind: 'Rent', issuedOn: '2026-01-01', dueOn: '2030-12-31', purpose: 'Аренда офиса', amount: 25000, fileId: null });
+  const file = await request.post(`${base}/files?tenantId=${tenantId}`, { headers: { Authorization: `Bearer ${token}` }, multipart: { file: { name: 'contract.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF') } } });
+  expect(file.ok()).toBeTruthy();
+  await call('/admin/documents', { tenantId, fileId: (await file.json()).id, title: 'Договор аренды', kind: 'Contract', number: 'TEST-001', documentDate: '2026-01-01', leaseId: null, premisesId: null });
+  await call('/admin/news', { title: 'Плановые работы', summary: 'Работы', body: 'Проверка электроснабжения завтра.', category: 'PlannedWork', importance: 'Urgent', publishAt: '2026-01-01T00:00:00Z', expiresAt: null, allTenants: true, tenantIds: [], premisesIds: [], building: null, section: null, floor: null, requiresAcknowledgement: true });
+});
+for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+ test(`tenant workflow ${viewport.width}px against real API`, async ({ page, request }) => {
+  await page.setViewportSize(viewport);
+  const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto('/');
+  await page.getByRole('textbox', { name: 'Логин', exact: true }).fill('frontend-tenant');
+  await page.locator('input[aria-label="Пароль"]:visible').fill(password);
+  await page.getByRole('button', { name: 'Войти', exact: true }).click();
+  await expect(page.getByText('Тестовая организация', { exact: true })).toBeVisible();
+  await expect(page.getByText('Офис 204', { exact: true }).first()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBeTruthy();
+  await expect(page.getByRole('button', { name: 'Оплатить', exact: true })).toHaveCount(0);
+  await page.screenshot({ path: `test-results/dashboard-${viewport.width}.png`, fullPage: true });
+  await page.getByRole('button', { name: 'Создать обращение', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Тема', exact: true }).fill('Проверка освещения '+viewport.width);
+  await page.getByRole('textbox', { name: 'Описание', exact: true }).fill('Не работает свет в коридоре. Просим проверить.');
+  await page.getByRole('button', { name: 'Отправить', exact: true }).click();
+  await expect(page).toHaveURL(/\/requests\/[0-9a-f-]{36}$/);
+  await expect(page.getByText(/^Обращение №[0-9a-f]{8}$/)).toBeVisible();
+  await expect(page.getByText('Не работает свет в коридоре. Просим проверить.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Назад', exact: true }).click();
+  await expect(page).toHaveURL(/\/requests$/);
+  // Navigate via SPA rather than reload: bearer stays only in memory.
+  await page.getByRole('link', { name: /Главная/ }).click();
+  await page.getByRole('button', { name: 'Передать показания', exact: true }).click();
+  await page.getByLabel('Новое показание, кВт·ч').fill(String(viewport.width === 1440 ? 2000 : 3000));
+  await page.getByRole('button', { name: 'Отправить', exact: true }).click();
+  await expect(page.getByText(new RegExp('стало ' + (viewport.width === 1440 ? 2000 : 3000))).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Назад', exact: true }).click();
+  await page.getByRole('link', { name: /Документы/ }).click();
+  await expect(page.getByText('Договор аренды', { exact: true })).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Скачать', exact: true }).first().click();
+  expect((await download).suggestedFilename()).toBeTruthy();
+  const choose = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Заявление', exact: true }).click();
+  await (await choose).setFiles({ name: `statement-${viewport.width}.pdf`, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%%EOF') });
+  await expect(page.getByText(`statement-${viewport.width}.pdf`, { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: /Новости/ }).click();
+  if (viewport.width === 1440) await page.getByRole('button', { name: 'Ознакомлен', exact: true }).first().click();
+  await expect(page.getByRole('button', { name: 'Ознакомлен', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Профиль', exact: true }).click();
+  page.once('dialog', d => d.accept());
+  await page.getByRole('button', { name: 'Выйти', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Логин', exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+ });
+}

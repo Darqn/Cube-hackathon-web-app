@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api';
+import { USE_MOCK } from '@/api/http';
 import { errorMessage } from '@/api/errors';
 import type { LocalFile, MeterType, MyPremise } from '@/api/types';
 import { fmtDate, toNumber } from '@/lib/format';
@@ -74,23 +75,29 @@ function MeterForm({ premises }: { premises: MyPremise[] }) {
   const [premiseId, setPremiseId] = useState(premises[0].id);
   const [meterType, setMeterType] = useState<MeterType>('electricity');
   const [value, setValue] = useState('');
+  const meters = useQuery({ queryKey: ['meters'], queryFn: api.meters, enabled: !USE_MOCK });
+  const [chosen, setChosen] = useState('');
+  const available = meters.data?.filter(m => m.active && m.premisesId === premiseId && m.type === (meterType === 'water' ? 'Water' : 'Electricity')) ?? [];
+  const meter = available.find(m => m.id === chosen) ?? available[0];
   const [photo, setPhoto] = useState<LocalFile[]>([]);
   const [error, setError] = useState<string | undefined>();
 
   const previous = useQuery({
-    queryKey: ['meter-prev', premiseId, meterType],
-    queryFn: () => api.meterPrevious(premiseId, meterType),
+    queryKey: ['meter-prev', premiseId, meterType, meter?.id],
+    queryFn: async () => USE_MOCK ? api.meterPrevious(premiseId, meterType) : (await api.meters()).find(m => m.id === meter?.id)?.lastValue ?? Promise.reject(new Error('Активный счётчик не найден')),
+    enabled: USE_MOCK || !!meter,
   });
 
   const send = useMutation({
     mutationFn: (num: number) =>
-      api.sendMeter({ premiseId, meterType, value: num, date: new Date().toISOString(), photo: photo[0] ?? null }),
+      api.sendMeter({ premiseId, meterId: meter?.id, meterType, value: num, date: new Date().toISOString(), photo: photo[0] ?? null }),
     onSuccess: () => {
       toast('Показания отправлены ответственному сотруднику');
       setValue('');
       setPhoto([]);
       void qc.invalidateQueries({ queryKey: ['meter-history'] });
       void qc.invalidateQueries({ queryKey: ['meter-prev'] });
+      void qc.invalidateQueries({ queryKey: ['meters'] });
       void qc.invalidateQueries({ queryKey: ['notifications'] });
     },
     onError: (e) => toast(errorMessage(e), 'error'),
@@ -98,7 +105,7 @@ function MeterForm({ premises }: { premises: MyPremise[] }) {
 
   const submit = () => {
     const num = toNumber(value);
-    if (value.trim() === '' || Number.isNaN(num)) return setError('Введите новое показание числом');
+    if (value.trim() === '' || !Number.isFinite(num) || num < 0) return setError('Введите новое показание числом');
     if (previous.data !== undefined && num < previous.data)
       return setError(`Показание не может быть меньше предыдущего (${previous.data})`);
     setError(undefined);
@@ -124,6 +131,7 @@ function MeterForm({ premises }: { premises: MyPremise[] }) {
           ]}
         />
       </View>
+      {!USE_MOCK ? <Async query={meters}>{() => available.length ? <SelectField label="Счётчик" value={meter?.id ?? ''} onChange={setChosen} options={available.map(m => ({ value: m.id, label: m.serialNumber }))} /> : <AppText variant="small">Нет активных счётчиков этого типа. Обратитесь к администратору.</AppText>}</Async> : null}
       <TextField
         label="Предыдущее показание"
         value={previous.isPending ? 'Загрузка…' : String(previous.data ?? '—')}
@@ -142,7 +150,7 @@ function MeterForm({ premises }: { premises: MyPremise[] }) {
       />
       <TextField label="Дата передачи" value={fmtDate(new Date().toISOString())} editable={false} />
       <AttachmentPicker files={photo} onChange={setPhoto} max={1} label="Фото счётчика (необязательно)" />
-      <Button title="Отправить" icon="send" loading={send.isPending} disabled={previous.isPending} onPress={submit} />
+      <Button title="Отправить" icon="send" loading={send.isPending} disabled={previous.isPending || previous.isError || (!USE_MOCK && !meter)} onPress={submit} />
     </Card>
   );
 }

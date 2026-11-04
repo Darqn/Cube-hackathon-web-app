@@ -55,11 +55,12 @@ export function InvoiceCard({
         </AppText>
       </View>
 
+      {payable && invoice.canPay === false ? <AppText variant="small">Онлайн-оплата пока недоступна. Реквизиты уточняйте в бухгалтерии.</AppText> : null}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <Badge label={status.label} tone={status.tone} />
         <View style={{ flex: 1 }} />
         {invoice.pdfUrl ? <Button small variant="secondary" icon="download-outline" title="Скачать" onPress={download} /> : null}
-        {payable ? <Button small title="Оплатить" loading={paying} onPress={() => onPay(invoice)} /> : null}
+        {payable && invoice.canPay !== false ? <Button small title="Оплатить" loading={paying} onPress={() => onPay(invoice)} /> : null}
       </View>
     </Card>
   );

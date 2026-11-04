@@ -1,118 +1,61 @@
 import { ApiError } from './errors';
 import type { LocalFile } from './types';
 
-/**
- * Адрес сервера задаётся в файле .env:  EXPO_PUBLIC_API_URL=https://api.example.ru/api
- * Если он не задан, приложение работает на тестовых данных (api/mock.ts).
- */
-export const BASE_URL = (process.env.EXPO_PUBLIC_API_URL ?? '').replace(/\/$/, '');
-export const USE_MOCK = BASE_URL === '';
-
+export const BASE_URL = (process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:5080/api/v1').replace(/\/$/, '');
+export const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK === 'true';
 let accessToken: string | null = null;
-let refreshToken: string | null = null;
-let onUnauthorized: (() => void) | null = null;
-let onTokens: ((access: string, refresh?: string) => void) | null = null;
-
-export function setTokens(access: string | null, refresh?: string | null) {
-  accessToken = access;
-  if (refresh !== undefined) refreshToken = refresh;
+let unauthorized: (() => void) | undefined;
+export function setTokens(access: string | null, _refresh?: string | null) { accessToken = access; }
+export function authHeaders(): Record<string, string> { return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}; }
+export function setSessionHandlers(handlers: { onUnauthorized: () => void }) { unauthorized = handlers.onUnauthorized; }
+export function absoluteUrl(path: string) {
+  const base = new URL(BASE_URL);
+  const url = new URL(path, `${base.origin}/`);
+  if (url.origin !== base.origin) throw new ApiError(400, 'Файл находится на другом сервере.');
+  return url.href;
 }
-
-export function setSessionHandlers(handlers: {
-  onUnauthorized: () => void;
-  onTokens: (access: string, refresh?: string) => void;
-}) {
-  onUnauthorized = handlers.onUnauthorized;
-  onTokens = handlers.onTokens;
-}
-
-export function absoluteUrl(url: string): string {
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${BASE_URL.replace(/\/api$/, '')}${url.startsWith('/') ? '' : '/'}${url}`;
-}
-
-type Options = { body?: unknown; form?: FormData; auth?: boolean };
-
-async function refresh(): Promise<boolean> {
-  if (!refreshToken) return false;
-  try {
-    const res = await fetch(`${BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { accessToken: string; refreshToken?: string };
-    accessToken = data.accessToken;
-    if (data.refreshToken) refreshToken = data.refreshToken;
-    onTokens?.(data.accessToken, data.refreshToken);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export async function request<T>(
-  method: string,
-  path: string,
-  opts: Options = {},
-  retried = false,
-): Promise<T> {
-  const headers: Record<string, string> = { Accept: 'application/json' };
-  if (opts.auth !== false && accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
-
+const messages: Record<string, string> = {
+  invalid_credentials: 'Неверный логин или пароль, либо доступ ещё не подтверждён администратором.',
+  registration_invalid_or_duplicate: 'Проверьте логин, email и сложность пароля. Возможно, аккаунт уже существует.',
+  invalid_inn: 'Проверьте ИНН: неверные цифры или контрольная сумма.',
+  invalid_reading: 'Показание должно быть не меньше предыдущего и не больше 999999999999.',
+  payment_provider_not_configured: 'Онлайн-оплата пока недоступна. Обратитесь в бухгалтерию.',
+  request_closed: 'Обращение закрыто. Создайте новое обращение.',
+  stale_version: 'Данные изменились. Обновите страницу и повторите действие.',
+  database_constraint_or_concurrency_conflict: 'Данные изменились или конфликтуют с существующими. Обновите страницу.',
+  unsupported_or_invalid_file: 'Формат файла не поддерживается или содержимое не соответствует расширению.',
+  invalid_office_document: 'Некорректный документ Office.',
+  unsafe_office_archive: 'Документ Office не прошёл проверку безопасности.',
+  invalid_file_type: 'Этот формат файла не поддерживается. Используйте PDF, JPEG или PNG.',
+  file_not_ready: 'Файл ожидает проверки и пока недоступен.',
+};
+export async function checkedFetch(url: string, options: RequestInit = {}, auth = true): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
   let res: Response;
-  try {
-    res = await fetch(`${BASE_URL}${path}`, {
-      method,
-      headers,
-      body: opts.form ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
-    });
-  } catch {
-    throw new ApiError(0, 'Нет соединения с сервером. Проверьте интернет и повторите.');
-  }
-
-  if (res.status === 401 && opts.auth !== false) {
-    if (!retried && (await refresh())) return request<T>(method, path, opts, true);
-    onUnauthorized?.();
-    throw new ApiError(401, 'Сессия истекла. Войдите снова.');
-  }
-
+  try { res = await fetch(url, { ...options, signal: controller.signal }); }
+  catch { throw new ApiError(0, 'Сервер недоступен. Проверьте соединение и повторите.'); }
+  finally { clearTimeout(timer); }
+  if (res.status === 401 && auth) unauthorized?.();
   if (!res.ok) {
-    let message = 'Ошибка сервера. Попробуйте позже.';
-    let fields: Record<string, string> | undefined;
-    try {
-      const data = await res.json();
-      if (typeof data?.message === 'string') message = data.message;
-      if (data?.fields && typeof data.fields === 'object') fields = data.fields;
-    } catch {
-      /* тело ответа не JSON */
-    }
-    throw new ApiError(res.status, message, fields);
+    let code = '';
+    try { const data = await res.json(); code = data.code ?? data.title ?? ''; } catch { /* empty body */ }
+    const defaults: Record<number, string> = { 401: 'Сессия истекла. Войдите снова.', 403: 'Нет доступа к этому действию.', 404: 'Запись или файл не найдены.', 413: 'Размер файла не должен превышать 20 МиБ.', 429: 'Слишком много запросов. Подождите минуту.', 400: 'Проверьте заполненные поля.', 409: 'Конфликт данных. Обновите страницу.' };
+    throw new ApiError(res.status, messages[code] ?? defaults[res.status] ?? 'Не удалось выполнить запрос. Попробуйте позже.');
   }
-
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  return res;
 }
-
-export function toForm(
-  fields: Record<string, string | number | null | undefined>,
-  files: Record<string, LocalFile | LocalFile[] | null | undefined> = {},
-): FormData {
+export async function request<T>(method: string, path: string, opts: { body?: unknown; form?: FormData; auth?: boolean; headers?: Record<string, string> } = {}): Promise<T> {
+  const headers = { Accept: 'application/json', ...(opts.auth === false ? {} : authHeaders()), ...(opts.body === undefined ? {} : { 'Content-Type': 'application/json' }), ...opts.headers };
+  const res = await checkedFetch(`${BASE_URL}${path}`, { method, headers, body: opts.form ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body)) }, opts.auth !== false);
+  return res.status === 204 || res.headers.get('content-length') === '0' ? undefined as T : await res.json();
+}
+export async function fileForm(file: LocalFile) {
   const form = new FormData();
-  for (const [key, value] of Object.entries(fields)) {
-    if (value !== undefined && value !== null) form.append(key, String(value));
-  }
-  for (const [key, value] of Object.entries(files)) {
-    const list = Array.isArray(value) ? value : value ? [value] : [];
-    for (const f of list) {
-      form.append(key, {
-        uri: f.uri,
-        name: f.name,
-        type: f.mimeType ?? 'application/octet-stream',
-      } as unknown as Blob);
-    }
-  }
+  if (typeof document !== 'undefined') {
+    const blob = await (await fetch(file.uri)).blob();
+    if (blob.size > 20 * 1024 * 1024) throw new ApiError(413, 'Размер файла не должен превышать 20 МиБ.');
+    form.append('file', blob, file.name);
+  } else form.append('file', { uri: file.uri, name: file.name, type: file.mimeType ?? 'application/octet-stream' } as unknown as Blob);
   return form;
 }

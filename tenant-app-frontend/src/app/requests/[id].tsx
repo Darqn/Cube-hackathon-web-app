@@ -36,6 +36,7 @@ export default function RequestDetails() {
       setShowFiles(false);
       toast('Сообщение отправлено');
       void qc.invalidateQueries({ queryKey: ['request-messages', id] });
+      void qc.invalidateQueries({ queryKey: ['request', id] });
       setTimeout(() => scroller.current?.scrollToEnd({ animated: true }), 300);
     },
     onError: (e) => toast(errorMessage(e), 'error'),

@@ -1,3 +1,4 @@
+import { PrivateImage } from '@/ui/PrivateImage';
 import { useState } from 'react';
 import { Image, Switch, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -128,9 +129,9 @@ function ListingCard({ item }: { item: Listing }) {
   const nav = useNav();
   const st = LISTING_STATUS[item.status];
   return (
-    <Card onPress={() => nav.push(`/premises/${item.id}`)} style={{ padding: 0, overflow: 'hidden' }}>
+    <Card style={{ padding: 0, overflow: 'hidden' }}>
       {item.photos[0] ? (
-        <Image source={{ uri: item.photos[0] }} style={{ width: '100%', height: 170, backgroundColor: colors.neutralBg }} resizeMode="cover" accessibilityLabel={item.name} />
+        <PrivateImage uri={item.photos[0]} style={{ width: '100%', height: 170, backgroundColor: colors.neutralBg }} resizeMode="cover" accessibilityLabel={item.name} />
       ) : (
         <View style={{ height: 120, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.neutralBg }}>
           <Icon name={PREMISE_TYPE[item.type].icon} size={40} color={colors.inactive} />

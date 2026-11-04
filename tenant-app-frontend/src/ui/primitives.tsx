@@ -60,7 +60,9 @@ export function Card({
   children,
   onPress,
   style,
+  accessibilityLabel,
 }: {
+  accessibilityLabel?: string;
   children: ReactNode;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
@@ -70,6 +72,7 @@ export function Card({
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
         style={({ pressed }) => [styles.card, pressed && styles.pressed, style]}
       >
         {children}
@@ -105,6 +108,7 @@ export function Button({
       onPress={onPress}
       disabled={inactive}
       accessibilityRole="button"
+      accessibilityLabel={title}
       accessibilityState={{ disabled: !!inactive, busy: !!loading }}
       style={({ pressed }) => [
         styles.button,
@@ -128,7 +132,7 @@ export function Button({
 }
 
 const buttonColors = {
-  primary: { bg: colors.accent, border: colors.accent, fg: colors.text },
+  primary: { bg: colors.accent, border: colors.accent, fg: '#FFFFFF' },
   secondary: { bg: colors.card, border: colors.accent, fg: colors.accentDark },
   ghost: { bg: 'transparent', border: 'transparent', fg: colors.accentDark },
   danger: { bg: colors.dangerBg, border: colors.dangerBg, fg: colors.danger },

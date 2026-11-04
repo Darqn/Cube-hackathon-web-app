@@ -212,7 +212,7 @@ export const mock = {
   requestMessages: (id: string) =>
     wait(clone(messages.filter((m) => m.requestId === id).sort((a, b) => a.createdAt.localeCompare(b.createdAt))), 300),
   createRequest(input: NewRequest): Promise<RequestItem> {
-    const number = Math.max(...requests.map((r) => r.number)) + 1;
+    const number = Math.max(...requests.map((r) => Number(r.number))) + 1;
     const premise = premises.find((p) => p.id === input.premiseId);
     const now = new Date().toISOString();
     const item: RequestItem = {

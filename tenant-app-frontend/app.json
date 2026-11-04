@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Куб · Кабинет арендатора",
+    "slug": "cube-tenant",
+    "scheme": "cube-tenant",
+    "version": "1.0.0",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-font",
+      "expo-asset"
+    ],
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

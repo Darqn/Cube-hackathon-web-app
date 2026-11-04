@@ -53,7 +53,7 @@ function Details({ item }: { item: NewsItem }) {
       </View>
       <AppText variant="h2">{item.title}</AppText>
       <AppText>{item.body}</AppText>
-      {item.urgent && !item.acknowledged ? (
+      {(item.requiresAcknowledgement ?? item.urgent) && !item.acknowledged ? (
         <Button icon="checkmark" title="Ознакомлен" loading={ack.isPending} onPress={() => ack.mutate()} />
       ) : null}
       {item.acknowledged ? <Badge label="Вы ознакомлены" tone="success" /> : null}

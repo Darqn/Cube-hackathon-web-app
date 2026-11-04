@@ -10,7 +10,7 @@ import { AppText, Button, Card, IconCircle } from '@/ui/primitives';
 import { FormInput } from '@/ui/form';
 import { useToast } from '@/ui/feedback';
 
-type Form = { fullName: string; organization: string; inn: string; email: string; phone: string };
+type Form = { login: string; password: string; fullName: string; organization: string; inn: string; email: string; phone: string };
 
 export default function Register() {
   const nav = useNav();
@@ -18,18 +18,20 @@ export default function Register() {
   const [sent, setSent] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const { control, handleSubmit, formState } = useForm<Form>({
-    defaultValues: { fullName: '', organization: '', inn: '', email: '', phone: '' },
+    defaultValues: { login: '', password: '', fullName: '', organization: '', inn: '', email: '', phone: '' },
   });
 
   const submit = handleSubmit(async (v) => {
     setServerError(null);
     try {
       await api.register({
+        login: v.login.trim(),
+        password: v.password,
         fullName: v.fullName.trim(),
         organization: v.organization.trim(),
         inn: v.inn.trim(),
         email: v.email.trim(),
-        phone: v.phone.trim() || undefined,
+        phone: v.phone.trim(),
       });
       setSent(true);
       toast('Заявка на регистрацию отправлена');
@@ -45,16 +47,21 @@ export default function Register() {
           <IconCircle name="checkmark-circle-outline" size={64} tone="success" />
           <AppText variant="h2" style={{ textAlign: 'center' }}>Заявка отправлена</AppText>
           <AppText variant="small" style={{ textAlign: 'center' }}>
-            Администратор проверит данные организации и подтвердит доступ. Ответ придёт на указанный email.
+            Администратор проверит данные организации и подтвердит доступ. После подтверждения войдите с выбранным логином и паролем.
           </AppText>
           <Button title="Вернуться ко входу" onPress={nav.back} style={{ alignSelf: 'stretch' }} />
         </Card>
       ) : (
         <>
           <AppText variant="small">
-            Укажите данные организации. После проверки администратор создаст доступ и пришлёт логин.
+            Укажите данные организации. Выберите логин и пароль. Доступ появится после одобрения администратором.
           </AppText>
           <Card style={{ gap: space.lg }}>
+            <FormInput control={control} name="login" label="Логин" autoCapitalize="none" autoCorrect={false}
+              rules={{ required: 'Введите логин', pattern: { value: /^[a-zA-Z0-9._@+\-]+$/, message: 'Используйте латинские буквы, цифры и . _ @ + -' } }} />
+            <FormInput control={control} name="password" label="Пароль" secureTextEntry autoCapitalize="none"
+              hint="От 12 символов: заглавная и строчная латинские буквы, цифра и спецсимвол"
+              rules={{ required: 'Введите пароль', minLength: { value: 12, message: 'Не менее 12 символов' }, validate: v => /[a-z]/.test(v) && /[A-Z]/.test(v) && /[0-9]/.test(v) && /[^a-zA-Z0-9]/.test(v) || 'Добавьте буквы обоих регистров, цифру и спецсимвол' }} />
             <FormInput control={control} name="fullName" label="ФИО" autoCapitalize="words" textContentType="name"
               rules={{ required: 'Введите ФИО', minLength: { value: 5, message: 'Введите ФИО полностью' } }} />
             <FormInput control={control} name="organization" label="Организация"
@@ -65,7 +72,7 @@ export default function Register() {
             <FormInput control={control} name="email" label="Email" keyboardType="email-address" autoCapitalize="none"
               autoCorrect={false} textContentType="emailAddress"
               rules={{ required: 'Введите email', pattern: { value: /^\S+@\S+\.\S+$/, message: 'Введите корректный email' } }} />
-            <FormInput control={control} name="phone" label="Телефон (необязательно)" keyboardType="phone-pad" textContentType="telephoneNumber" />
+            <FormInput control={control} name="phone" label="Телефон" rules={{ required: 'Введите телефон' }} keyboardType="phone-pad" textContentType="telephoneNumber" />
             {serverError ? (
               <View style={{ backgroundColor: colors.dangerBg, borderRadius: radius.sm, padding: space.md }}>
                 <AppText variant="small" color={colors.danger}>{serverError}</AppText>

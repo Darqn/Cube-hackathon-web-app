@@ -27,7 +27,6 @@ export const REQUEST_CATEGORIES: {
   { key: 'construction', title: 'По вопросу строительства', short: 'Строительство', assignee: 'Главный инженер', icon: 'hammer-outline' },
   { key: 'accounting', title: 'По вопросу бухгалтерии', short: 'Бухгалтерия', assignee: 'Бухгалтер', icon: 'calculator-outline' },
   { key: 'termination', title: 'Расторжение договора аренды', short: 'Расторжение', assignee: 'Отдел аренды', icon: 'document-text-outline' },
-  { key: 'telecom', title: 'По вопросу интернета и связи', short: 'Интернет и связь', assignee: 'Системный администратор', icon: 'wifi-outline' },
 ];
 
 export const categoryByKey = (key: RequestCategory) =>

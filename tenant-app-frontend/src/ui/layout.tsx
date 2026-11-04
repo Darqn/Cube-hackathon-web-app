@@ -36,7 +36,7 @@ export function Screen({
       {scroll ? (
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl + bottom, gap: space.lg }}
+          contentContainerStyle={{ width: '100%', maxWidth: header ? 1120 : 500, alignSelf: 'center', padding: space.lg, paddingBottom: space.xxl + bottom, gap: space.lg }}
           refreshControl={
             onRefresh ? (
               <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.accent} colors={[colors.accent]} />
@@ -46,7 +46,7 @@ export function Screen({
           {children}
         </ScrollView>
       ) : (
-        <View style={{ flex: 1 }}>{children}</View>
+        <View style={{ flex: 1, width: '100%', maxWidth: 1120, alignSelf: 'center' }}>{children}</View>
       )}
       {footer ? <View style={{ paddingBottom: bottom }}>{footer}</View> : null}
     </KeyboardAvoidingView>
@@ -61,13 +61,13 @@ export function BrandBar() {
   return (
     <View style={styles.brand}>
       <View style={styles.logo}>
-        <Icon name="cog" size={24} color={colors.accent} />
+        <Icon name="cube-outline" size={24} color={colors.accent} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={styles.brandName} numberOfLines={1}>АО «Дальреммаш»</Text>
+        <Text style={styles.brandName} numberOfLines={1}>КУБ · Дальреммаш</Text>
         <AppText variant="small">Личный кабинет арендатора</AppText>
       </View>
-      <Pressable onPress={() => nav.push('/notifications')} hitSlop={8} accessibilityLabel="Уведомления" style={styles.iconBtn}>
+      <Pressable onPress={() => nav.push('/notifications')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Уведомления" style={styles.iconBtn}>
         <Icon name="notifications-outline" size={26} color={colors.heading} />
         {unread > 0 ? (
           <View style={styles.dot}>
@@ -75,7 +75,7 @@ export function BrandBar() {
           </View>
         ) : null}
       </Pressable>
-      <Pressable onPress={() => nav.push('/profile')} hitSlop={8} accessibilityLabel="Профиль" style={styles.iconBtn}>
+      <Pressable onPress={() => nav.push('/profile')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Профиль" style={styles.iconBtn}>
         <Icon name="person-circle-outline" size={30} color={colors.heading} />
       </Pressable>
     </View>
@@ -87,7 +87,7 @@ export function BackBar({ title, right }: { title: string; right?: ReactNode }) 
   const nav = useNav();
   return (
     <View style={styles.back}>
-      <Pressable onPress={nav.back} hitSlop={10} accessibilityLabel="Назад" style={styles.iconBtn}>
+      <Pressable onPress={nav.back} hitSlop={10} accessibilityRole="button" accessibilityLabel="Назад" style={styles.iconBtn}>
         <Icon name="chevron-back" size={26} color={colors.heading} />
       </Pressable>
       <Text style={styles.backTitle} numberOfLines={1}>{title}</Text>
@@ -99,7 +99,7 @@ export function BackBar({ title, right }: { title: string; right?: ReactNode }) 
 /** Заголовок раздела на главных экранах. */
 export function PageTitle({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: space.md }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: space.md }}>
       <View style={{ flex: 1, gap: 4 }}>
         <AppText variant="title">{title}</AppText>
         {subtitle ? <AppText variant="small">{subtitle}</AppText> : null}
@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   brandName: { fontSize: 17, fontWeight: '700', color: colors.heading },
-  iconBtn: { padding: 2 },
+  iconBtn: { padding: 8, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   dot: {
     position: 'absolute',
     top: -4,

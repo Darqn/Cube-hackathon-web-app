@@ -24,7 +24,7 @@ export default function TabsLayout() {
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
         tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
         tabBarBadgeStyle: { backgroundColor: colors.accent, color: colors.text },
-        sceneStyle: { backgroundColor: colors.bg },
+
       }}
     >
       {TABS.map((t) => (

@@ -79,3 +79,7 @@ Review migrations before production use. Explicitly run `dotnet run --project sr
 | `CUBE_TEST_DATABASE` | Isolated test server connection, with database creation rights |
 
 No secrets belong in source, logs, committed settings or chat. `.env` is development-only and ignored. Its sourced contents must be trusted local configuration.
+
+## Веб-кабинет арендатора
+
+Фронтенд находится в `tenant-app-frontend`. [Инструкции запуска и описание изменений на русском](tenant-app-frontend/README.md). Для API с разрешёнными локальными веб-источниками используйте `bash scripts/dev-web.sh`.

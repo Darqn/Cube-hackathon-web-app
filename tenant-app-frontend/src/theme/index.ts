@@ -1,22 +1,22 @@
 import { TextStyle } from 'react-native';
 
 export const colors = {
-  bg: '#FAF8F4',
+  bg: '#F3F6F7',
   card: '#FFFFFF',
-  text: '#22252A',
-  heading: '#3A3F47',
-  accent: '#B8893A',
-  accentDark: '#8F6A27',
-  accentSoft: '#F6EEDD',
-  border: '#E7E2D8',
-  muted: '#7A7F87',
-  inactive: '#8B9098',
+  text: '#233B46',
+  heading: '#142F3A',
+  accent: '#147D78',
+  accentDark: '#10645F',
+  accentSoft: '#E1F1EF',
+  border: '#DCE5E8',
+  muted: '#5C707A',
+  inactive: '#647780',
   success: '#2F7D4F',
   successBg: '#E6F3EB',
   danger: '#B3372F',
   dangerBg: '#FBEAE8',
-  warning: '#8F6A27',
-  warningBg: '#F6EEDD',
+  warning: '#10645F',
+  warningBg: '#E1F1EF',
   info: '#2F5F9A',
   infoBg: '#E8F0F9',
   neutral: '#5C6169',
@@ -37,7 +37,7 @@ export const type: Record<string, TextStyle> = {
 };
 
 export const shadow = {
-  shadowColor: '#3A3F47',
+  shadowColor: '#142F3A',
   shadowOpacity: 0.06,
   shadowRadius: 8,
   shadowOffset: { width: 0, height: 2 },

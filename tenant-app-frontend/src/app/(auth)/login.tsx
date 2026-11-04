@@ -43,14 +43,15 @@ export default function Login() {
             justifyContent: 'center',
           }}
         >
-          <Icon name="cog" size={44} color={colors.accent} />
+          <Icon name="cube-outline" size={44} color={colors.accent} />
         </View>
-        <AppText variant="title" style={{ textAlign: 'center' }}>АО «Дальреммаш»</AppText>
+        <AppText variant="title" style={{ textAlign: 'center' }}>КУБ · Дальреммаш</AppText>
         <AppText variant="small">Личный кабинет арендатора</AppText>
       </View>
 
       <Card style={{ gap: space.lg }}>
-        <AppText variant="h2">Вход</AppText>
+        <AppText variant="h2">Рады вас видеть</AppText>
+        <AppText variant="small">Войдите, чтобы управлять арендой и обращаться к команде.</AppText>
         <FormInput
           control={control}
           name="login"

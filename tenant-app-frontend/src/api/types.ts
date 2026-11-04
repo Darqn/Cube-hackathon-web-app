@@ -39,6 +39,7 @@ export interface Invoice {
   paidAmount: number;
   status: InvoiceStatus;
   pdfUrl?: string | null;
+  canPay?: boolean;
 }
 
 export type MeterType = 'electricity' | 'water';
@@ -62,6 +63,7 @@ export interface LocalFile {
 
 export interface NewMeterReading {
   premiseId: string;
+  meterId?: string;
   meterType: MeterType;
   value: number;
   date: string;
@@ -94,7 +96,7 @@ export interface Attachment {
 
 export interface RequestItem {
   id: string;
-  number: number;
+  number: string | number;
   category: RequestCategory;
   subject: string;
   description: string;
@@ -175,6 +177,7 @@ export interface NewsItem {
   urgent: boolean;
   read: boolean;
   acknowledged: boolean;
+  requiresAcknowledgement?: boolean;
 }
 
 export interface AppNotification {
@@ -191,7 +194,9 @@ export interface RegistrationInput {
   fullName: string;
   organization: string;
   inn: string;
-  phone?: string;
+  phone: string;
+  login: string;
+  password: string;
 }
 
 export interface LoginResult {
