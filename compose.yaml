@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:17.7-bookworm@sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd
+    environment:
+      POSTGRES_DB: cube
+      POSTGRES_USER: cube
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/configure-dev.py first}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - cube-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cube -d cube"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  cube-postgres:

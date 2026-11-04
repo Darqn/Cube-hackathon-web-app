@@ -1,0 +1,31 @@
+name: Backend
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.7-bookworm
+        env:
+          POSTGRES_USER: cube
+          POSTGRES_PASSWORD: ci-only-cube
+          POSTGRES_DB: cube
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U cube -d cube"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      CUBE_TEST_DATABASE: Host=127.0.0.1;Port=5432;Database=cube;Username=cube;Password=ci-only-cube
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet restore Cube.sln --locked-mode
+      - run: dotnet build Cube.sln --configuration Release --no-restore
+      - run: dotnet test Cube.sln --configuration Release --no-build --logger "trx;LogFileName=backend.trx"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'
