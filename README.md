@@ -56,7 +56,7 @@ The written brief takes precedence: **Internet/telephone support is not seeded**
 
 ## Production prerequisites and limits
 
-This is a tested backend baseline, not a claim of production certification. The admin web UI and mobile clients are outside backend scope. Optional favorites, native push/SMS, electronic signatures, telephony, tenant-controlled contact lists, document version comparison and refunds are not implemented. Leases currently cover one premises per record and assume exclusive occupancy; multi-premises contracts can share a contract number, but there is no contract aggregate. Tenant notification history is separate per user.
+This is a tested backend baseline, not a claim of production certification. The administration web interface and staff workspace are in `tenant-app-frontend`; native mobile release testing remains outside this baseline. Optional favorites, native push/SMS, electronic signatures, telephony, tenant-controlled contact lists, document version comparison and refunds are not implemented. Leases currently cover one premises per record and assume exclusive occupancy; multi-premises contracts can share a contract number, but there is no contract aggregate. Tenant notification history is separate per user.
 
 Production uploads remain **quarantined** until a scanner/storage workflow is connected. Only Development with explicit `Files__AllowUnscannedDevelopmentUploads=true` permits structurally validated files without malware scanning. Extension/signature checks are not malware detection. Do not enable development mode in production. In a future scanner adapter, promote verified file metadata to Ready only after a clean scan; no HTTP endpoint permits bypassing quarantine.
 
@@ -83,3 +83,5 @@ No secrets belong in source, logs, committed settings or chat. `.env` is develop
 ## Веб-кабинет арендатора
 
 Фронтенд находится в `tenant-app-frontend`. [Инструкции запуска и описание изменений на русском](tenant-app-frontend/README.md). Для API с разрешёнными локальными веб-источниками используйте `bash scripts/dev-web.sh`.
+
+[Панель администратора и рабочий кабинет сотрудника: вход, возможности и ограничения](docs/admin-interface.md).

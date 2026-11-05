@@ -18,7 +18,7 @@ public static class RequestEndpoints
             var q = a.Requests.AsNoTracking();
             if (status is not null) q = q.Where(x => x.Status == status); if (premisesId is not null) q = q.Where(x => x.PremisesId == premisesId);
             if (tenantId is not null) q = q.Where(x => x.TenantId == tenantId); if (assigneeId is not null) q = q.Where(x => x.AssigneeId == assigneeId);
-            return Results.Ok(new { Total = await q.CountAsync(ct), Items = await q.OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct) });
+            return Results.Ok(new { Total = await q.CountAsync(ct), Items = await q.OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).Select(r => new { r.Id, r.TenantId, r.PremisesId, r.CategoryId, r.AssigneeId, r.Subject, r.Description, r.ContactName, r.Phone, r.Email, r.Status, r.DueAt, r.Version, r.CreatedAt, TenantName = db.Tenants.Where(t => t.Id == r.TenantId).Select(t => t.Name).FirstOrDefault(), PremisesName = db.Premises.Where(p => p.Id == r.PremisesId).Select(p => p.Name).FirstOrDefault(), AssigneeName = db.Users.Where(u => u.Id == r.AssigneeId).Select(u => u.FullName).FirstOrDefault() }).ToListAsync(ct) });
         });
         g.MapPost("/requests", async (Create input, Access a, CubeDb db, CancellationToken ct) =>
         {
@@ -31,7 +31,7 @@ public static class RequestEndpoints
         g.MapGet("/requests/{id:guid}", async (Guid id, Access a, CubeDb db, CancellationToken ct) =>
         {
             var r = await a.Request(id, ct);
-            return Results.Ok(new { Request = r, Messages = await db.Messages.Where(x => x.RequestId == id && x.TenantId == r.TenantId && (a.Staff || !x.Internal)).OrderBy(x => x.CreatedAt).Select(x => new { x.Id, x.AuthorId, x.Text, x.Internal, x.CreatedAt }).ToListAsync(ct), History = await db.RequestEvents.Where(x => x.RequestId == id && x.TenantId == r.TenantId).OrderBy(x => x.CreatedAt).ToListAsync(ct), Attachments = await db.Attachments.Where(x => x.RequestId == id && x.TenantId == r.TenantId).Select(x => new { x.Id, x.FileId }).ToListAsync(ct) });
+            return Results.Ok(new { Request = r, Messages = await db.Messages.Where(x => x.RequestId == id && x.TenantId == r.TenantId && (a.Staff || !x.Internal)).OrderBy(x => x.CreatedAt).Select(x => new { x.Id, x.AuthorId, AuthorName = db.Users.Where(u => u.Id == x.AuthorId).Select(u => u.FullName).FirstOrDefault(), x.Text, x.Internal, x.CreatedAt }).ToListAsync(ct), History = await db.RequestEvents.Where(x => x.RequestId == id && x.TenantId == r.TenantId).OrderBy(x => x.CreatedAt).ToListAsync(ct), Attachments = await db.Attachments.Where(x => x.RequestId == id && x.TenantId == r.TenantId).Select(x => new { x.Id, x.FileId }).ToListAsync(ct) });
         });
         g.MapPost("/requests/{id:guid}/messages", async (Guid id, MessageInput input, Access a, CubeDb db, CancellationToken ct) =>
         {
@@ -68,6 +68,21 @@ public static class RequestEndpoints
             if (input.PhotoId is Guid fid) Guard.That(await db.Files.AnyAsync(x => x.Id == fid && x.TenantId == a.TenantId && x.State == "Ready" && (x.ContentType == "image/jpeg" || x.ContentType == "image/png"), ct), "photo_not_available");
             var r = new Reading { TenantId = a.TenantId, MeterId = id, PreviousValue = m.LastValue, Value = input.Value, PhotoId = input.PhotoId };
             m.LastValue = input.Value; db.Readings.Add(r); Events.Queue(db, "Bitrix", "ReadingSubmitted", r.Id); await db.SaveChangesAsync(ct); return Results.Created($"/api/v1/meters/{id}/readings", r);
+        });
+        g.MapGet("/staff/meters", async (Access a, CubeDb db, int? page, int? size, CancellationToken ct) =>
+        {
+            Guard.That(a.Staff, "staff_required", 403);
+            var electricity = await db.Categories.AnyAsync(x => x.Code == "electricity" && x.ResponsibleUserId == a.UserId, ct);
+            var water = await db.Categories.AnyAsync(x => x.Code == "water-heating" && x.ResponsibleUserId == a.UserId, ct);
+            return Results.Ok(await db.Meters.AsNoTracking().Where(m => a.Admin || (electricity && m.Type == "Electricity") || (water && m.Type == "Water")).OrderBy(m => m.SerialNumber).ThenBy(m => m.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct));
+        });
+        g.MapGet("/staff/readings", async (Access a, CubeDb db, int? page, int? size, CancellationToken ct) =>
+        {
+            Guard.That(a.Staff, "staff_required", 403);
+            var electricity = await db.Categories.AnyAsync(x => x.Code == "electricity" && x.ResponsibleUserId == a.UserId, ct);
+            var water = await db.Categories.AnyAsync(x => x.Code == "water-heating" && x.ResponsibleUserId == a.UserId, ct);
+            var allowed = db.Meters.Where(m => a.Admin || (electricity && m.Type == "Electricity") || (water && m.Type == "Water")).Select(m => m.Id);
+            return Results.Ok(await db.Readings.AsNoTracking().Where(r => allowed.Contains(r.MeterId)).OrderByDescending(r => r.CreatedAt).ThenBy(r => r.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct));
         });
         g.MapGet("/admin/readings", async (Guid? tenantId, CubeDb db, int? page, int? size, CancellationToken ct) => await db.Readings.Where(x => tenantId == null || x.TenantId == tenantId).OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct)).RequireAuthorization("Admin");
         g.MapPut("/admin/readings/{id:guid}/review", async (Guid id, ReviewInput input, CubeDb db, CancellationToken ct) =>

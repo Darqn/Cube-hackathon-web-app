@@ -34,7 +34,16 @@ with tempfile.TemporaryDirectory(prefix='cube-frontend-') as tmp:
                 subprocess.run(['npx','expo','export','--platform','web','--clear','--output-dir',tmp+'/web'],cwd=root/'tenant-app-frontend',env=env,stdout=web_log,stderr=web_log,check=True)
                 web=subprocess.Popen(['python3','scripts/serve-web.py',tmp+'/web','8082'],cwd=root/'tenant-app-frontend',env=env,stdout=web_log,stderr=web_log,start_new_session=True)
                 ready('http://127.0.0.1:8082')
-                subprocess.run(['npx','playwright','test'],cwd=root/'tenant-app-frontend',env=env,check=True)
+                suites = sorted((root/'tenant-app-frontend/tests/browser').glob('*.spec.ts'))
+                for index, suite in enumerate(suites):
+                    # Each suite uses production rate limits. Restart the API to isolate counters;
+                    # database authorization and persistence remain real across requests.
+                    if index:
+                        api.terminate(); api.wait()
+                        api=subprocess.Popen(command,cwd=root,env=env,stdout=log,stderr=log)
+                        ready('http://127.0.0.1:5081/health/ready')
+                    subprocess.run(['npx','playwright','test',suite.name],cwd=root/'tenant-app-frontend',env=env,check=True)
+                print('All browser suites passed.', flush=True)
     finally:
         if web:
             import signal

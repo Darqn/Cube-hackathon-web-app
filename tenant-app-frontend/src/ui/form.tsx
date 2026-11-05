@@ -141,6 +141,8 @@ export function SelectField({
                   onChange(item.value);
                   setOpen(false);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={item.label}
                 style={styles.option}
               >
                 <View style={{ flex: 1 }}>

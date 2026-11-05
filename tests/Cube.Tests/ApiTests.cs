@@ -156,4 +156,61 @@ public sealed class ApiTests(ApiFixture f) : IClassFixture<ApiFixture>
         Assert.Equal(HttpStatusCode.OK, (await a.GetAsync($"/api/v1/meters/{f.MeterA}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await b.GetAsync($"/api/v1/meters/{f.MeterA}")).StatusCode);
     }
+
+    [Fact]
+    public async Task Administration_catalogs_require_admin()
+    {
+        using var admin = await f.As("admin");
+        var meters = await admin.GetFromJsonAsync<JsonElement>("/api/v1/admin/meters?size=100");
+        Assert.Contains(meters.EnumerateArray(), m => m.GetProperty("id").GetGuid() == f.MeterA);
+        var leases = await admin.GetFromJsonAsync<JsonElement>($"/api/v1/admin/leases?tenantId={f.TenantA}");
+        Assert.All(leases.EnumerateArray(), l => Assert.Equal(f.TenantA, l.GetProperty("tenantId").GetGuid()));
+        using var tenant = await f.As("tenant-a"); using var staff = await f.As("staff");
+        foreach (var path in new[] { "/api/v1/admin/meters", "/api/v1/admin/leases" })
+        {
+            Assert.Equal(HttpStatusCode.Forbidden, (await tenant.GetAsync(path)).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await staff.GetAsync(path)).StatusCode);
+        }
+        Assert.Equal(HttpStatusCode.Forbidden, (await tenant.GetAsync("/api/v1/staff/meters")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await tenant.GetAsync("/api/v1/staff/readings")).StatusCode);
+    }
+    [Fact]
+    public async Task Employee_meter_history_follows_category_responsibility()
+    {
+        var login = "meter-worker-" + Guid.NewGuid().ToString("N"); Guid workerId; Guid categoryId; Guid? previous;
+        using (var scope = f.Services.CreateScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
+            var u = new User { Id = Guid.NewGuid(), UserName = login, Email = login + "@example.test", FullName = "Meter worker", Role = "Staff", Approved = true };
+            Assert.True((await users.CreateAsync(u, ApiFixture.Password)).Succeeded); workerId = u.Id;
+            var db = scope.ServiceProvider.GetRequiredService<CubeDb>(); var category = await db.Categories.SingleAsync(c => c.Code == "electricity"); categoryId = category.Id; previous = category.ResponsibleUserId;
+        }
+        using var worker = await f.As(login);
+        Assert.Empty((await worker.GetFromJsonAsync<JsonElement>("/api/v1/staff/meters")).EnumerateArray());
+        try
+        {
+            using (var scope = f.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<CubeDb>(); (await db.Categories.FindAsync(categoryId))!.ResponsibleUserId = workerId;
+                db.Meters.Add(new Meter { TenantId = f.TenantA, PremisesId = f.PremisesA, Type = "Water", SerialNumber = login, Unit = "m3" }); await db.SaveChangesAsync();
+            }
+            var meters = await worker.GetFromJsonAsync<JsonElement>("/api/v1/staff/meters?size=100");
+            Assert.NotEmpty(meters.EnumerateArray()); Assert.All(meters.EnumerateArray(), m => Assert.Equal("Electricity", m.GetProperty("type").GetString()));
+            var readings = await worker.GetFromJsonAsync<JsonElement>("/api/v1/staff/readings?size=100"); var ids = meters.EnumerateArray().Select(m => m.GetProperty("id").GetGuid()).ToHashSet();
+            Assert.All(readings.EnumerateArray(), r => Assert.Contains(r.GetProperty("meterId").GetGuid(), ids));
+        }
+        finally { using var scope = f.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<CubeDb>(); (await db.Categories.FindAsync(categoryId))!.ResponsibleUserId = previous; await db.SaveChangesAsync(); }
+        Assert.Empty((await worker.GetFromJsonAsync<JsonElement>("/api/v1/staff/meters")).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Staff_request_list_exposes_names_only_for_assigned_requests()
+    {
+        using var staff = await f.As("staff");
+        var list = await staff.GetFromJsonAsync<JsonElement>("/api/v1/requests?size=100");
+        var rows = list.GetProperty("items").EnumerateArray().ToArray();
+        Assert.Contains(rows, r => r.GetProperty("id").GetGuid() == f.RequestA && r.GetProperty("tenantName").GetString() == "A");
+        Assert.DoesNotContain(rows, r => r.GetProperty("id").GetGuid() == f.RequestB);
+        Assert.All(rows, r => Assert.Equal(f.Staff, r.GetProperty("assigneeId").GetGuid()));
+    }
 }

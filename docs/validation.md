@@ -15,3 +15,7 @@ Current-run test report: ignored `tests/Cube.Tests/TestResults/backend.trx` (37 
 Not executed or enabled: real 1C/Bitrix/payment/email exchange, production malware scanning, production load/security review, production deployment, backup restoration, mobile/frontend clients. Live integrations were explicitly excluded by company instruction. Disabled gateways never claim successful remote delivery or payment.
 
 Internet/telephone support remains a future category. Only the six categories in the written company brief are seeded.
+
+## Administration frontend validation — 2026-11-05
+
+The role-aware administration interface and staff workspace were validated against real ASP.NET Core and PostgreSQL. Release build passed; 40 backend tests passed without skips, including new administrative catalog permissions, responsibility-scoped meter history and assigned-request list projections. TypeScript and 16 frontend tests passed. Five production-browser scenarios passed (three administration/staff/mobile scenarios plus two tenant regressions). Test suites restart their isolated API between suites to avoid sharing production rate counters; assertions and production rate-limit defaults remain intact. Temporary databases were removed. See `docs/admin-interface.md` for supported workflows and backend limitations. No live external-provider or physical-device validation was performed.

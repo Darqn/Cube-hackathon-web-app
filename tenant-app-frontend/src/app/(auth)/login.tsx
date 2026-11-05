@@ -46,12 +46,12 @@ export default function Login() {
           <Icon name="cube-outline" size={44} color={colors.accent} />
         </View>
         <AppText variant="title" style={{ textAlign: 'center' }}>КУБ · Дальреммаш</AppText>
-        <AppText variant="small">Личный кабинет арендатора</AppText>
+        <AppText variant="small">Арендаторам и сотрудникам</AppText>
       </View>
 
       <Card style={{ gap: space.lg }}>
         <AppText variant="h2">Рады вас видеть</AppText>
-        <AppText variant="small">Войдите, чтобы управлять арендой и обращаться к команде.</AppText>
+        <AppText variant="small">Войдите с вашим логином. Кабинет откроется в соответствии с вашей ролью.</AppText>
         <FormInput
           control={control}
           name="login"
