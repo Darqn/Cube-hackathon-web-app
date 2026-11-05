@@ -64,8 +64,7 @@ export async function request<T>(method: string, path: string, opts: { body?: un
   const res = await checkedFetch(`${BASE_URL}${path}`, { method, headers, body: opts.form ?? (opts.body === undefined ? undefined : JSON.stringify(opts.body)) }, opts.auth !== false);
   return res.status === 204 || res.headers.get('content-length') === '0' ? undefined as T : await res.json();
 }
-export async function fileForm(file: LocalFile) {
-  const form = new FormData();
+export async function appendFile(form: FormData, file: LocalFile) {
   if (typeof document !== 'undefined') {
     const blob = await (await fetch(file.uri)).blob();
     if (blob.size > 20 * 1024 * 1024) throw new ApiError(413, 'Размер файла не должен превышать 20 МиБ.');
@@ -73,3 +72,4 @@ export async function fileForm(file: LocalFile) {
   } else form.append('file', { uri: file.uri, name: file.name, type: file.mimeType ?? 'application/octet-stream' } as unknown as Blob);
   return form;
 }
+export async function fileForm(file: LocalFile) { return appendFile(new FormData(), file); }

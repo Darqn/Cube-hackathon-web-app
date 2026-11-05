@@ -10,7 +10,7 @@ import {
 import { list, canOpen, roleHome } from "../src/management/api";
 test("roles have separate homes and restricted management sections", () => {
   assert.equal(roleHome("Admin"), "/manage/overview");
-  assert.equal(roleHome("Staff"), "/manage/overview");
+  assert.equal(roleHome("Staff"), "/staff/overview");
   assert.equal(roleHome("Tenant"), "/");
   for (const s of [
     "tenants",

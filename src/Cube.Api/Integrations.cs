@@ -20,4 +20,15 @@ public static class Events
         foreach (var userId in db.Users.Where(x => x.TenantId == tenant && x.Approved && !x.Blocked).Select(x => x.Id).ToList())
             db.Notifications.Add(new Notification { TenantId = tenant, UserId = userId, Kind = kind, ResourceId = id, Text = text });
     }
+    public static void NotifyStaff(CubeDb db, Guid? user, Guid tenant, string kind, Guid resource, string text)
+    {
+        if (user is Guid id && db.Users.Any(u => u.Id == id && u.Approved && !u.Blocked && (u.Role == "Staff" || u.Role == "Admin")))
+            db.Notifications.Add(new Notification { TenantId = tenant, UserId = id, Kind = kind, ResourceId = resource, Text = text });
+    }
+    public static void NotifyReadingStaff(CubeDb db, Meter meter, Reading reading)
+    {
+        var code = meter.Type == "Electricity" ? "electricity" : "water-heating";
+        var user = db.Categories.Where(c => c.Code == code).Select(c => c.ResponsibleUserId).FirstOrDefault();
+        NotifyStaff(db, user, meter.TenantId, "StaffReadingSubmitted", reading.Id, "Поступили новые показания счётчика " + meter.SerialNumber);
+    }
 }

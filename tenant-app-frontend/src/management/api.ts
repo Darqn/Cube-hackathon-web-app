@@ -1,4 +1,4 @@
-import { request, fileForm } from "@/api/http";
+import { request, fileForm, appendFile } from "@/api/http";
 import type { LocalFile } from "@/api/types";
 export type Role = "Admin" | "Staff" | "Tenant";
 export type Identity = {
@@ -36,6 +36,22 @@ export async function list(path: string): Promise<Row[]> {
   }
 }
 export const management = {
+  reply: async (
+    id: string,
+    text: string,
+    internal: boolean,
+    files: LocalFile[],
+  ) => {
+    const form = new FormData();
+    form.append("text", text);
+    form.append("internal", String(internal));
+    for (const file of files) await appendFile(form, file);
+    return request<{ id: string; pendingFiles: number }>(
+      "POST",
+      `/staff/requests/${id}/replies`,
+      { form },
+    );
+  },
   identity: () => request<Identity>("GET", "/auth/me"),
   list,
   get: <T>(path: string) => request<T>("GET", path),
@@ -76,7 +92,11 @@ export const staffSections = [
   "profile",
 ];
 export const roleHome = (role?: Role) =>
-  role === "Admin" || role === "Staff" ? "/manage/overview" : "/";
+  role === "Admin"
+    ? "/manage/overview"
+    : role === "Staff"
+      ? "/staff/overview"
+      : "/";
 export function canOpen(role: Role | undefined, section: string) {
   return (
     (role === "Admin" &&

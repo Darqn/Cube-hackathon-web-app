@@ -77,7 +77,7 @@ public static class FileEndpoints
         {
             var r = await a.Request(id, ct); Guard.That(a.Admin || !a.Staff, "staff_upload_forbidden", 403); Guard.That(r.Status is not "Closed" and not "Rejected", "request_closed", 409);
             Guard.That(await db.Files.AnyAsync(x => x.Id == i.FileId && x.TenantId == r.TenantId && x.State == "Ready", ct), "file_not_found", 404);
-            var at = new Attachment { TenantId = r.TenantId, RequestId = id, FileId = i.FileId }; db.Attachments.Add(at); Events.Queue(db, "Bitrix", "AttachmentAdded", at.Id); await db.SaveChangesAsync(ct); return Results.Created($"/api/v1/requests/{id}", new { at.Id, at.FileId });
+            var at = new Attachment { TenantId = r.TenantId, RequestId = id, FileId = i.FileId }; db.Attachments.Add(at); Events.Queue(db, "Bitrix", "AttachmentAdded", at.Id); if (r.AssigneeId != a.UserId) Events.NotifyStaff(db, r.AssigneeId, r.TenantId, "StaffRequestAttachment", r.Id, "Добавлено вложение: " + r.Subject); await db.SaveChangesAsync(ct); return Results.Created($"/api/v1/requests/{id}", new { at.Id, at.FileId });
         });
         g.MapGet("/admin/documents", async (Guid? tenantId, CubeDb db, int? page, int? size, CancellationToken ct) => await db.Documents.Where(x => tenantId == null || x.TenantId == tenantId).OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct)).RequireAuthorization("Admin");
         g.MapPost("/admin/documents", async (DocumentInput i, CubeDb db, CancellationToken ct) =>
@@ -100,7 +100,7 @@ public static class FileEndpoints
         if (!a.Admin)
         {
             if (a.Staff) Guard.That(await (from attachment in db.Attachments join r in a.Requests on attachment.RequestId equals r.Id where attachment.FileId == id && attachment.TenantId == f.TenantId select attachment.Id).AnyAsync(ct), "file_not_found", 404);
-            else Guard.That(f.TenantId == a.TenantId, "file_not_found", 404);
+            else { Guard.That(f.TenantId == a.TenantId, "file_not_found", 404); Guard.That(!await db.Attachments.AnyAsync(at => at.FileId == id && at.MessageId != null && db.Messages.Any(m => m.Id == at.MessageId && m.Internal), ct), "file_not_found", 404); }
         }
         var path = storage.PathFor(f.Key); Guard.That(File.Exists(path), "file_not_found", 404); return Results.File(path, f.ContentType, f.Name, enableRangeProcessing: true);
     }

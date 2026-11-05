@@ -1,3 +1,4 @@
+import type { LocalFile } from "@/api/types";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   View,
@@ -15,7 +16,7 @@ import {
 } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
 import { AppText, Badge, Button, Card, Icon } from "@/ui/primitives";
-import { TextField, SelectField } from "@/ui/form";
+import { TextField, SelectField, AttachmentPicker } from "@/ui/form";
 import { Async, EmptyState, useToast } from "@/ui/feedback";
 import { colors, space } from "@/theme";
 import { fmtDate, fmtDateTime, fmtMoney } from "@/lib/format";
@@ -1358,7 +1359,7 @@ function Workspace({ section }: { section: string }) {
     </View>
   );
 }
-function Detail({
+export function Detail({
   section,
   selected,
   catalog,
@@ -1380,6 +1381,7 @@ function Detail({
   const { user } = useAuth();
   const [text, setText] = useState("");
   const [internal, setInternal] = useState(false);
+  const [files, setFiles] = useState<LocalFile[]>([]);
   const toast = useToast();
   const asset = !!selected.assetMode;
   const assetKind = str(selected, "assetKind") || section;
@@ -1425,14 +1427,18 @@ function Detail({
   });
   const send = useMutation({
     mutationFn: () =>
-      management.save(`/requests/${selected.id}/messages`, {
-        text: text.trim(),
-        internal,
-      }),
-    onSuccess: () => {
+      management.reply(selected.id, text.trim(), internal, files),
+    onSuccess: (result) => {
       setText("");
+      setFiles([]);
       refresh();
-      toast(internal ? "Внутренняя заметка сохранена" : "Сообщение отправлено");
+      toast(
+        result.pendingFiles
+          ? "Ответ сохранён. Вложения ожидают проверки."
+          : internal
+            ? "Внутренняя заметка сохранена"
+            : "Сообщение отправлено",
+      );
     },
     onError: (e: Error) => toast(e.message, "error"),
   });
@@ -1629,7 +1635,8 @@ function Detail({
                         d.attachments.map((f) => (
                           <Button
                             key={f.id}
-                            title={`Скачать файл ${str(f, "fileId").slice(0, 8)}`}
+                            title={`${str(f, "state") === "Quarantined" ? "Ожидает проверки: " : "Скачать файл "}${str(f, "name") || str(f, "fileId").slice(0, 8)}${d.messages.some((m) => m.id === f.messageId && m.internal) ? " · Внутренний" : ""}`}
+                            disabled={f.state === "Quarantined"}
                             small
                             variant="secondary"
                             onPress={() =>
@@ -1667,7 +1674,7 @@ function Detail({
                                   tone="warning"
                                 />
                               ) : (
-                                <Badge label="Сообщение арендатору" />
+                                <Badge label="Публичное сообщение" />
                               )}
                               <AppText variant="caption">
                                 {fmtDateTime(str(m, "createdAt"))}
@@ -1706,9 +1713,27 @@ function Detail({
                               ? "Внутренняя заметка недоступна арендатору."
                               : "Этот ответ будет виден арендатору."}
                           </AppText>
+                          <View
+                            pointerEvents={send.isPending ? "none" : "auto"}
+                          >
+                            <AttachmentPicker
+                              files={files}
+                              onChange={setFiles}
+                              max={5}
+                              label={
+                                internal
+                                  ? "Внутренние вложения"
+                                  : "Вложения для арендатора"
+                              }
+                            />
+                          </View>
+                          <AppText variant="caption">
+                            До 5 файлов, суммарно до 20 МиБ. Видимость файлов
+                            соответствует виду сообщения.
+                          </AppText>
                           <Button
                             title="Отправить ответ"
-                            disabled={!text.trim()}
+                            disabled={!text.trim() && !files.length}
                             loading={send.isPending}
                             onPress={() => send.mutate()}
                           />
@@ -1998,7 +2023,7 @@ function IntegrationStatus() {
     </Async>
   );
 }
-function Profile({
+export function Profile({
   open,
   signOut,
 }: {

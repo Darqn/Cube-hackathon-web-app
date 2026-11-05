@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix='cube-frontend-') as tmp:
                         api.terminate(); api.wait()
                         api=subprocess.Popen(command,cwd=root,env=env,stdout=log,stderr=log)
                         ready('http://127.0.0.1:5081/health/ready')
-                    subprocess.run(['npx','playwright','test',suite.name],cwd=root/'tenant-app-frontend',env=env,check=True)
+                    subprocess.run(['npx','playwright','test',suite.name,'--output',str(pathlib.Path('test-results')/suite.stem)],cwd=root/'tenant-app-frontend',env=env,check=True)
                 print('All browser suites passed.', flush=True)
     finally:
         if web:

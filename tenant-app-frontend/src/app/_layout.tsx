@@ -43,9 +43,16 @@ function Gate() {
     const auth = segments[0] === "(auth)";
     if (!isAuthed && !auth) router.replace("/login");
     const managing = segments[0] === "manage";
-    if (isAuthed && (auth || (user?.role !== "Tenant" && !managing)))
+    const staffing = segments[0] === "staff";
+    if (
+      isAuthed &&
+      (auth ||
+        (user?.role === "Admin" && !managing) ||
+        (user?.role === "Staff" && !staffing))
+    )
       router.replace(roleHome(user?.role) as never);
-    if (isAuthed && user?.role === "Tenant" && managing) router.replace("/");
+    if (isAuthed && user?.role === "Tenant" && (managing || staffing))
+      router.replace("/");
   }, [ready, isAuthed, user?.role, segments, router]);
   if (!ready) {
     return (

@@ -85,3 +85,5 @@ No secrets belong in source, logs, committed settings or chat. `.env` is develop
 Фронтенд находится в `tenant-app-frontend`. [Инструкции запуска и описание изменений на русском](tenant-app-frontend/README.md). Для API с разрешёнными локальными веб-источниками используйте `bash scripts/dev-web.sh`.
 
 [Панель администратора и рабочий кабинет сотрудника: вход, возможности и ограничения](docs/admin-interface.md).
+
+[Отдельный кабинет сотрудника: вход, очередь задач, уведомления, файлы и показания](docs/employee-interface.md).

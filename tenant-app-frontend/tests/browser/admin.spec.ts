@@ -28,7 +28,9 @@ async function login(page: Page, username: string, pwd: string) {
     .fill(username);
   await page.locator('input[aria-label="Пароль"]:visible').fill(pwd);
   await page.getByRole("button", { name: "Войти", exact: true }).click();
-  await expect(page).toHaveURL(/manage\/overview/);
+  await expect(page).toHaveURL(
+    username === "frontend-admin" ? /manage\/overview/ : /staff\/overview/,
+  );
 }
 const exact = (s: string) =>
   new RegExp("^" + s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?: \\*)?$");
@@ -246,7 +248,9 @@ test("staff works on assigned requests, private notes stay private and admin end
   ).toHaveCount(0);
   await section(page, "Обращения");
   await expect(text(page, "Назначенная задача инженера")).toBeVisible();
-  await page.getByRole("button", { name: "Подробнее", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Открыть обращение", exact: true })
+    .click();
   await fill(page, "Текст ответа", "Публичный ответ инженера");
   await page
     .getByRole("button", { name: "Отправить ответ", exact: true })
@@ -275,7 +279,7 @@ test("staff works on assigned requests, private notes stay private and admin end
     .getByRole("button", { name: "Закрыть карточку", exact: true })
     .click();
   await section(page, "Показания");
-  await expect(text(page, "0 → 123")).toBeVisible();
+  await expect(page.getByText(/ADMIN-METER.*0 → 123/).filter({visible:true})).toBeVisible();
   const staffToken = (
     await call("/auth/login", { loginName: "ui-engineer", password })
   ).accessToken;
