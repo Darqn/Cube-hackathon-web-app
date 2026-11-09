@@ -1,3 +1,4 @@
+import { CompanyBrand } from "@/ui/CompanyBrand";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   Modal,
@@ -342,17 +343,20 @@ function Workspace({ section }: { section: string }) {
   );
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      {!wide ? <View style={{ paddingHorizontal: 16, paddingTop: 16 }}><CompanyBrand compact /></View> : null}
       <View
         style={{
           padding: 16,
-          backgroundColor: colors.heading,
+          backgroundColor: colors.bg,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
           flexDirection: "row",
           alignItems: "center",
           gap: 12,
         }}
       >
         {wide ? (
-          <Icon name="briefcase-outline" color="#FFFFFF" size={28} />
+          <CompanyBrand />
         ) : (
           <Pressable
             accessibilityRole="button"
@@ -364,18 +368,18 @@ function Workspace({ section }: { section: string }) {
               alignItems: "center",
               justifyContent: "center",
               borderWidth: 1,
-              borderColor: "#C6DADC",
+              borderColor: colors.border,
               borderRadius: 10,
             }}
           >
-            <Icon name="menu-outline" color="#FFFFFF" size={26} />
+            <Icon name="menu-outline" color={colors.heading} size={26} />
           </Pressable>
         )}
         <View style={{ flex: 1 }}>
-          <AppText color="#FFFFFF" variant="h3">
-            КУБ · Рабочий кабинет
+          <AppText color={colors.heading} variant="h3">
+            Рабочий кабинет
           </AppText>
-          <AppText color="#C6DADC" variant="small" numberOfLines={2}>
+          <AppText color={colors.muted} variant="small" numberOfLines={2}>
             {user?.fullName} · Сотрудник компании
           </AppText>
         </View>

@@ -5,7 +5,7 @@ import { api } from '@/api';
 import { errorMessage } from '@/api/errors';
 import { useNav } from '@/lib/nav';
 import { colors, radius, space } from '@/theme';
-import { BackBar, Screen } from '@/ui/layout';
+import { AuthScreen } from '@/ui/AuthScreen';
 import { AppText, Button, Card, IconCircle } from '@/ui/primitives';
 import { FormInput } from '@/ui/form';
 import { useToast } from '@/ui/feedback';
@@ -41,7 +41,7 @@ export default function Register() {
   });
 
   return (
-    <Screen header={<BackBar title="Заявка на регистрацию" />}>
+    <AuthScreen title="Регистрация">
       {sent ? (
         <Card style={{ alignItems: 'center', gap: space.md }}>
           <IconCircle name="checkmark-circle-outline" size={64} tone="success" />
@@ -82,6 +82,7 @@ export default function Register() {
           </Card>
         </>
       )}
-    </Screen>
+          <Button variant="ghost" title="Вернуться ко входу" onPress={() => nav.replace('/login')} />
+    </AuthScreen>
   );
 }

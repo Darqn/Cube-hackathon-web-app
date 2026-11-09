@@ -1,3 +1,4 @@
+import { useWindowDimensions } from "react-native";
 import { useAuth } from "@/auth/AuthProvider";
 import { roleHome } from "@/management/api";
 import { Redirect } from "expo-router";
@@ -38,6 +39,7 @@ export default function TabsLayout() {
   return <TenantTabs />;
 }
 function TenantTabs() {
+  const wide = useWindowDimensions().width >= 1000;
   const news = useNews();
   const unreadNews = news.data?.filter((n) => !n.read).length ?? 0;
   return (
@@ -48,6 +50,7 @@ function TenantTabs() {
         tabBarInactiveTintColor: colors.inactive,
         tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
         tabBarStyle: {
+          display: wide ? "none" : "flex",
           backgroundColor: colors.card,
           borderTopColor: colors.border,
         },
