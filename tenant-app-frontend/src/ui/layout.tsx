@@ -1,5 +1,8 @@
+import { useAuth } from '@/auth/AuthProvider';
+import { CompanyBrand } from './CompanyBrand';
+import { usePathname } from 'expo-router';
 import { type ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api';
@@ -26,6 +29,7 @@ export function Screen({
   onRefresh?: () => void;
 }) {
   const insets = useSafeAreaInsets();
+  const wide = useWindowDimensions().width >= 900;
   const bottom = tabs ? 0 : insets.bottom;
   return (
     <KeyboardAvoidingView
@@ -36,7 +40,7 @@ export function Screen({
       {scroll ? (
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ width: '100%', maxWidth: header ? 1120 : 500, alignSelf: 'center', padding: space.lg, paddingBottom: space.xxl + bottom, gap: space.lg }}
+          contentContainerStyle={{ width: '100%', maxWidth: header ? 1120 : 500, alignSelf: 'center', padding: wide ? 32 : 20, paddingBottom: space.xxl + bottom, gap: space.lg }}
           refreshControl={
             onRefresh ? (
               <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.accent} colors={[colors.accent]} />
@@ -55,18 +59,15 @@ export function Screen({
 
 /** Верхняя панель главных экранов: название компании, уведомления, профиль. */
 export function BrandBar() {
+  const compact = useWindowDimensions().width < 400;
   const nav = useNav();
   const notifications = useQuery({ queryKey: ['notifications'], queryFn: api.notifications, refetchInterval: 60000 });
   const unread = notifications.data?.filter((n) => !n.read).length ?? 0;
   return (
     <View style={styles.brand}>
-      <View style={styles.logo}>
-        <Icon name="cube-outline" size={24} color={colors.accent} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.brandName} numberOfLines={1}>КУБ · Дальреммаш</Text>
-        <AppText variant="small">Личный кабинет арендатора</AppText>
-      </View>
+      <CompanyBrand compact={compact} />
+      <View style={{ flex: 1 }} />
+      <DesktopNavigation />
       <Pressable onPress={() => nav.push('/notifications')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Уведомления" style={styles.iconBtn}>
         <Icon name="notifications-outline" size={26} color={colors.heading} />
         {unread > 0 ? (
@@ -86,12 +87,15 @@ export function BrandBar() {
 export function BackBar({ title, right }: { title: string; right?: ReactNode }) {
   const nav = useNav();
   return (
-    <View style={styles.back}>
+    <View>
+      <CompanyHeader />
+      <View style={styles.back}>
       <Pressable onPress={nav.back} hitSlop={10} accessibilityRole="button" accessibilityLabel="Назад" style={styles.iconBtn}>
         <Icon name="chevron-back" size={26} color={colors.heading} />
       </Pressable>
       <Text style={styles.backTitle} numberOfLines={1}>{title}</Text>
       {right}
+      </View>
     </View>
   );
 }
@@ -109,28 +113,48 @@ export function PageTitle({ title, subtitle, action }: { title: string; subtitle
   );
 }
 
+
+const navigation = [
+  ['/', 'Главная'], ['/invoices', 'Счета'], ['/requests', 'Обращения'],
+  ['/documents', 'Документы'], ['/premises', 'Помещения'], ['/news', 'Новости'],
+] as const;
+function DesktopNavigation() {
+  const wide = useWindowDimensions().width >= 1000;
+  const { user } = useAuth();
+  const pathname = usePathname();
+  const nav = useNav();
+  if (!wide || user?.role !== 'Tenant') return null;
+  return (
+    <View style={{ flexDirection: 'row', gap: 4 }}>
+      {navigation.map(([href, label]) => (
+        <Pressable
+          key={href}
+          accessibilityRole="link"
+          accessibilityState={{ selected: pathname === href }}
+          onPress={() => nav.push(href)}
+          style={{ paddingHorizontal: 12, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: pathname === href ? colors.accent : 'transparent' }}
+        >
+          <AppText variant="small" color={pathname === href ? colors.accentDark : colors.muted}>{label}</AppText>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+function CompanyHeader() {
+  return <View style={styles.brand}><CompanyBrand /><View style={{ flex: 1 }} /><DesktopNavigation /></View>;
+}
+
 const styles = StyleSheet.create({
   brand: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
-    paddingHorizontal: space.lg,
+    paddingHorizontal: space.xl,
     paddingVertical: space.md,
-    backgroundColor: colors.card,
+    backgroundColor: colors.bg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  logo: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1.5,
-    borderColor: colors.accent,
-    backgroundColor: colors.accentSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  brandName: { fontSize: 17, fontWeight: '700', color: colors.heading },
   iconBtn: { padding: 8, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   dot: {
     position: 'absolute',
@@ -144,16 +168,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dotText: { color: colors.text, fontSize: 11, fontWeight: '700' },
+  dotText: { color: colors.card, fontSize: 11, fontWeight: '700' },
   back: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
     paddingHorizontal: space.md,
     height: 56,
-    backgroundColor: colors.card,
+    backgroundColor: colors.bg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  backTitle: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.heading },
+  backTitle: { flex: 1, fontSize: 24, fontWeight: '400', color: colors.accentDark },
 });

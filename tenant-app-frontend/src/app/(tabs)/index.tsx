@@ -1,4 +1,4 @@
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, useWindowDimensions } from 'react-native';
 import { PREMISE_STATUS, PREMISE_TYPE, type IconName } from '@/lib/config';
 import { fmtArea } from '@/lib/format';
 import { useNav } from '@/lib/nav';
@@ -18,6 +18,7 @@ const QUICK: { title: string; icon: IconName; href: string }[] = [
 
 export default function Home() {
   const nav = useNav();
+  const wide = useWindowDimensions().width >= 900;
   const profile = useProfile();
   const premises = useMyPremises();
   const invoices = useInvoices();
@@ -35,8 +36,9 @@ export default function Home() {
   return (
     <Screen tabs header={<BrandBar />} refreshing={refreshing} onRefresh={refresh}>
       <View style={{ gap: 4 }}>
-        <AppText variant="small">Здравствуйте,</AppText>
-        <AppText variant="title">{profile.data?.orgName ?? ' '}</AppText>
+        <AppText variant="caption" style={{ letterSpacing: 1.5 }}>ЛИЧНЫЙ КАБИНЕТ · ОБЗОР</AppText>
+        <AppText variant="title">Личный кабинет</AppText>
+        <AppText variant="h3">{profile.data?.orgName ?? ' '}</AppText>
         <AppText variant="small">Помещения, счета и обращения в одном месте</AppText>
       </View>
 
@@ -54,7 +56,8 @@ export default function Home() {
         </Card>
       ) : null}
 
-      <View style={{ gap: space.md }}>
+      <View style={{ flexDirection: wide ? 'row' : 'column', flexWrap: 'wrap', gap: 28 }}>
+      <View style={{ gap: space.md, width: wide ? '48%' : '100%', flexGrow: 1 }}>
         <SectionHeader title="Мои помещения" action="Все помещения" onAction={() => nav.push('/my-premises')} />
         <Async
           query={premises}
@@ -82,7 +85,7 @@ export default function Home() {
         </Async>
       </View>
 
-      <View style={{ gap: space.md }}>
+      <View style={{ gap: space.md, width: wide ? '48%' : '100%', flexGrow: 1 }}>
         <SectionHeader title="Счета к оплате" action="Все счета" onAction={() => nav.push('/invoices')} />
         <Async
           query={invoices}
@@ -102,18 +105,19 @@ export default function Home() {
         </Async>
       </View>
 
-      <View style={{ gap: space.md }}>
+      <View style={{ gap: space.md, width: wide ? '48%' : '100%', flexGrow: 1 }}>
         <SectionHeader title="Быстрые действия" />
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.md }}>
           {QUICK.map((q) => (
-            <Card accessibilityLabel={q.title} key={q.title} onPress={() => nav.push(q.href)} style={{ width: '47.5%', alignItems: 'center', gap: space.sm, paddingVertical: space.lg, borderRadius: radius.lg }}>
+            <Card accessibilityLabel={q.title} key={q.title} onPress={() => nav.push(q.href)} style={{ flexBasis: '45%', flexGrow: 1, alignItems: 'flex-start', gap: space.sm, paddingVertical: space.lg, borderRadius: radius.lg }}>
               <Icon name={q.icon} size={30} />
-              <AppText variant="small" color={colors.heading} style={{ textAlign: 'center', fontWeight: '600' }}>{q.title}</AppText>
+              <AppText variant="small" color={colors.heading} style={{ fontWeight: '500' }}>{q.title}</AppText>
             </Card>
           ))}
         </View>
       </View>
 
+      </View>
     </Screen>
   );
 }

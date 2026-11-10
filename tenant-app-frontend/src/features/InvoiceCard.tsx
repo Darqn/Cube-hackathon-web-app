@@ -32,7 +32,7 @@ export function InvoiceCard({
   };
 
   return (
-    <Card style={{ gap: 12 }}>
+    <Card style={{ gap: 12, backgroundColor: payable ? colors.accentSoft : colors.card }}>
       <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
         <IconCircle name={kind.icon} size={40} />
         <View style={{ flex: 1 }}>

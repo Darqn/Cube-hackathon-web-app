@@ -1,3 +1,4 @@
+import { CompanyBrand } from "@/ui/CompanyBrand";
 import type { LocalFile } from "@/api/types";
 import { useEffect, useState, type ReactNode } from "react";
 import {
@@ -906,10 +907,13 @@ function Workspace({ section }: { section: string }) {
   );
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      {!wide ? <View style={{ paddingHorizontal: 16, paddingTop: 16 }}><CompanyBrand compact /></View> : null}
       <View
         style={{
           padding: 16,
-          backgroundColor: colors.heading,
+          backgroundColor: colors.bg,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
           flexDirection: "row",
           alignItems: "center",
           gap: 12,
@@ -923,13 +927,13 @@ function Workspace({ section }: { section: string }) {
             onPress={() => setMenu(!menu)}
           />
         ) : (
-          <Icon name="cube-outline" color="#FFFFFF" size={30} />
+          <CompanyBrand />
         )}
         <View style={{ flex: 1 }}>
-          <AppText color="#FFFFFF" variant="h3">
-            КУБ · {isAdmin ? "Панель управления" : "Рабочий кабинет"}
+          <AppText color={colors.heading} variant="h3">
+            {isAdmin ? "Панель управления" : "Рабочий кабинет"}
           </AppText>
-          <AppText color="#C6DADC" variant="small">
+          <AppText color={colors.muted} variant="small">
             {user?.fullName} · {label(user?.role)}
           </AppText>
         </View>

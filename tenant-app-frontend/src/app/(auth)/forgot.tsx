@@ -5,7 +5,7 @@ import { api } from '@/api';
 import { errorMessage } from '@/api/errors';
 import { useNav } from '@/lib/nav';
 import { colors, radius, space } from '@/theme';
-import { BackBar, Screen } from '@/ui/layout';
+import { AuthScreen } from '@/ui/AuthScreen';
 import { AppText, Button, Card, IconCircle } from '@/ui/primitives';
 import { FormInput } from '@/ui/form';
 
@@ -28,7 +28,7 @@ export default function Forgot() {
   });
 
   return (
-    <Screen header={<BackBar title="Восстановление пароля" />}>
+    <AuthScreen title="Восстановление пароля">
       {sent ? (
         <Card style={{ alignItems: 'center', gap: space.md }}>
           <IconCircle name="mail-outline" size={64} tone="success" />
@@ -51,6 +51,7 @@ export default function Forgot() {
           <Button title="Отправить" loading={formState.isSubmitting} onPress={submit} />
         </Card>
       )}
-    </Screen>
+          <Button variant="ghost" title="Вернуться ко входу" onPress={() => nav.replace('/login')} />
+    </AuthScreen>
   );
 }

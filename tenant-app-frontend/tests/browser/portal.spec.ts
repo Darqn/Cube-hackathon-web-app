@@ -50,6 +50,14 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
   await expect(page).toHaveURL(/\/requests$/);
   // Navigate via SPA rather than reload: bearer stays only in memory.
   await page.getByRole('link', { name: /Главная/ }).click();
+  if (viewport.width === 1440) {
+    await page.getByRole('link', { name: 'Счета', exact: true }).click();
+    await expect(page).toHaveURL(/\/invoices$/);
+    await expect(page.getByText('Онлайн-оплата пока недоступна.', { exact: false }).filter({ visible: true }).first()).toBeVisible();
+    await page.getByRole('link', { name: 'Главная', exact: true }).click();
+  }
+  await expect(page.getByRole('img', { name: 'Логотип Дальреммаш' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
   await page.getByRole('button', { name: 'Передать показания', exact: true }).click();
   await page.getByLabel('Новое показание, кВт·ч').fill(String(viewport.width === 1440 ? 2000 : 3000));
   await page.getByRole('button', { name: 'Отправить', exact: true }).click();

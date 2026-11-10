@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   buttonSmall: { minHeight: 38, paddingHorizontal: space.md, borderRadius: radius.sm },
-  badge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
+  badge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.sm },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   tab: {
     flexDirection: 'row',
@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 14,
     height: 38,
-    borderRadius: radius.pill,
+    borderRadius: radius.sm,
     backgroundColor: colors.card,
     borderWidth: 1,
     borderColor: colors.border,

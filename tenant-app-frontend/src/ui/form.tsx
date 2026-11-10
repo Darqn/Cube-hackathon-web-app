@@ -210,9 +210,9 @@ export function AttachmentPicker({
 const styles = StyleSheet.create({
   input: {
     minHeight: 48,
-    borderWidth: 1,
+    borderBottomWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.card,
+    backgroundColor: colors.bg,
     borderRadius: radius.md,
     paddingHorizontal: space.md,
     fontSize: 15,

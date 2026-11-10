@@ -6,8 +6,8 @@ import { errorMessage } from '@/api/errors';
 import { USE_MOCK } from '@/api/http';
 import { useNav } from '@/lib/nav';
 import { colors, radius, space } from '@/theme';
-import { Screen } from '@/ui/layout';
-import { AppText, Button, Card, Icon } from '@/ui/primitives';
+import { AuthScreen } from '@/ui/AuthScreen';
+import { AppText, Button } from '@/ui/primitives';
 import { FormInput } from '@/ui/form';
 
 type Form = { login: string; password: string };
@@ -29,28 +29,9 @@ export default function Login() {
   });
 
   return (
-    <Screen>
-      <View style={{ alignItems: 'center', gap: space.md, paddingTop: space.xl }}>
-        <View
-          style={{
-            width: 84,
-            height: 84,
-            borderRadius: 42,
-            borderWidth: 2,
-            borderColor: colors.accent,
-            backgroundColor: colors.accentSoft,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Icon name="cube-outline" size={44} color={colors.accent} />
-        </View>
-        <AppText variant="title" style={{ textAlign: 'center' }}>КУБ · Дальреммаш</AppText>
-        <AppText variant="small">Арендаторам и сотрудникам</AppText>
-      </View>
-
-      <Card style={{ gap: space.lg }}>
-        <AppText variant="h2">Рады вас видеть</AppText>
+    <AuthScreen title="Личный кабинет">
+      <View style={{ gap: space.lg }}>
+        <AppText variant="h2">Вход в кабинет</AppText>
         <AppText variant="small">Войдите с вашим логином. Кабинет откроется в соответствии с вашей ролью.</AppText>
         <FormInput
           control={control}
@@ -90,19 +71,19 @@ export default function Login() {
 
         <Button title="Войти" loading={formState.isSubmitting} onPress={submit} />
         <Button variant="ghost" title="Забыли пароль?" onPress={() => nav.push('/forgot')} />
-      </Card>
+      </View>
 
-      <Card style={{ gap: space.sm }}>
+      <View style={{ gap: space.sm, borderTopWidth: 1, borderColor: colors.border, paddingTop: 20 }}>
         <AppText variant="h3">Ещё нет доступа?</AppText>
         <AppText variant="small">Отправьте заявку. Администратор проверит данные и подтвердит доступ.</AppText>
         <Button variant="secondary" title="Заявка на регистрацию" onPress={() => nav.push('/register')} />
-      </Card>
+      </View>
 
       {USE_MOCK ? (
         <AppText variant="caption" style={{ textAlign: 'center' }}>
           Тестовый режим без сервера. Логин: demo, пароль: demo1234
         </AppText>
       ) : null}
-    </Screen>
+    </AuthScreen>
   );
 }
