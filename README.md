@@ -4,6 +4,12 @@ ASP.NET Core 10, EF Core/Npgsql and PostgreSQL 17 backend for the commercial-pro
 
 ## Run locally
 
+### Windows
+
+Run `start-cube.bat` from the repository root (or pass the checkout directory as its first argument). The launcher checks Node.js/npm, the pinned .NET SDK, Docker Desktop/Compose and project dependencies. Every installation or dependency download requires console confirmation; declining stops startup. Docker Desktop requires Linux containers and may need WSL2 setup and a reboot after its first installation.
+
+The launcher preserves an existing `.env`, starts PostgreSQL, builds the backend, applies migrations and starts API/Expo in separate windows. Stop both servers with Ctrl+C in their windows, then run `docker compose stop` from the repository root to stop PostgreSQL while retaining its data. No administrator is created automatically. On the first run or after dependency changes, `npm ci` recreates `node_modules` using the lockfile and available cache. The Windows launcher has not yet been executed on Windows CI.
+
 Prerequisites: the SDK pinned in `global.json`, Python 3, Docker Engine and Docker Compose. Development data uses a named PostgreSQL volume; uploaded files use ignored `.data/files`. Nothing creates a default administrator or seeds real tenant data.
 
 ```bash
