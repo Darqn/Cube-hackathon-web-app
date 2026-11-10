@@ -11,6 +11,27 @@ exit /b %CUBE_EXIT%
 # POWERSHELL PAYLOAD
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
+$workers = New-Object 'System.Collections.Generic.List[System.Diagnostics.Process]'
+$databaseStarted = $false
+function Check($name) { Write-Host "[CHECK] $name" -ForegroundColor Cyan }
+function StopProject {
+    Write-Host 'Stopping project...'
+    foreach ($worker in $workers) {
+        # The retained PowerShell parent owns this server's entire process tree.
+        if (-not $worker.HasExited) {
+            Probe 'taskkill.exe' @('/PID', [string]$worker.Id, '/T', '/F')
+            if ($probeExit -ne 0 -and -not $worker.HasExited) {
+                Write-Warning "Could not stop server process $($worker.Id). Close its window manually."
+            }
+        }
+        $worker.Dispose()
+    }
+    $workers.Clear()
+    if ($databaseStarted) {
+        Probe 'docker.exe' @('compose','stop','db')
+        if ($probeExit -ne 0) { Write-Warning 'Could not stop PostgreSQL. Run docker compose stop db from the project directory.' }
+    }
+}
 # Windows PowerShell 5 reports native stderr as ErrorRecord, even for expected misses.
 function Probe($command, [string[]]$arguments) {
     $ErrorActionPreference = 'Continue'
@@ -50,7 +71,8 @@ function OpenWorker($name, $body) {
     $file = Join-Path $state "$name.ps1"
     $prefix = '$ErrorActionPreference="Stop"; Set-Location -LiteralPath ' + "'" + $root.Replace("'","''") + "';`r`n"
     [IO.File]::WriteAllText($file, $prefix + $body, (New-Object Text.UTF8Encoding($true)))
-    Start-Process powershell.exe -ArgumentList @('-NoLogo','-NoProfile','-NoExit','-ExecutionPolicy','Bypass','-File',('"'+$file+'"')) | Out-Null
+    $worker = Start-Process powershell.exe -PassThru -ArgumentList @('-NoLogo','-NoProfile','-NoExit','-ExecutionPolicy','Bypass','-File',('"'+$file+'"'))
+    $workers.Add($worker)
 }
 try {
     $root = (Resolve-Path -LiteralPath $env:CUBE_PROJECT).Path
@@ -63,17 +85,25 @@ try {
         $branch = & git branch --show-current
         if ($LASTEXITCODE -eq 0) {
             Write-Host "Текущая ветка: $branch"
-            if ($branch -ne 'dev' -and $branch -ne 'dev/web-design') { Confirm "Ожидалась dev или dev/web-design. Продолжить на текущей ветке $branch?" }
         }
     }
     $state=Join-Path $root '.data/windows-launcher'
     New-Item -ItemType Directory -Force -Path $state | Out-Null
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Check 'Node.js (version 20 or newer)'
     if (-not (Get-Command node.exe -ErrorAction SilentlyContinue)) { InstallWinget 'OpenJS.NodeJS.LTS' 'Node.js LTS и npm' }
     $nodeVersion = & node.exe -p 'process.versions.node'
+    if ($LASTEXITCODE -ne 0 -or [int]($nodeVersion.Split('.')[0]) -lt 20) {
+        InstallWinget 'OpenJS.NodeJS.LTS' 'Node.js LTS'
+        $nodeVersion = & node.exe -p 'process.versions.node'
+    }
     if ($LASTEXITCODE -ne 0 -or [int]($nodeVersion.Split('.')[0]) -lt 20) { throw 'Требуется Node.js >=20; рекомендуется проверенная версия 24.22.1. Обновите Node.js и перезапустите BAT.' }
+    Check 'npm'
+    if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) { InstallWinget 'OpenJS.NodeJS.LTS' 'Node.js LTS (includes npm)' }
     if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) { throw 'npm не найден. Восстановите установку Node.js.' }
+    Run 'npm.cmd' @('--version')
     Write-Host "Node.js $nodeVersion"
+    Check 'Docker Desktop and Linux container engine'
     if (-not (Get-Command docker.exe -ErrorAction SilentlyContinue)) { InstallWinget 'Docker.DockerDesktop' 'Docker Desktop' }
     if (-not (Get-Command docker.exe -ErrorAction SilentlyContinue)) { throw 'Docker установлен. Перезапустите Windows, настройте WSL2/Linux containers в Docker Desktop и повторите запуск.' }
     Probe 'docker.exe' @('info','--format','{{.OSType}}')
@@ -92,7 +122,9 @@ try {
     $dockerExit = $LASTEXITCODE
     $ErrorActionPreference = 'Stop'
     if ($dockerExit -ne 0 -or $osType -ne 'linux') { throw 'Docker не готов. Включите виртуализацию/WSL2, запустите Docker Desktop в режиме Linux containers. После первой установки может требоваться перезагрузка.' }
+    Check 'Docker Compose v2'
     Run 'docker.exe' @('compose','version')
+    Check '.NET SDK version pinned in global.json'
     $sdk=(Get-Content global.json -Raw | ConvertFrom-Json).sdk.version
     $localDotnet=Join-Path $root '.tools/dotnet-win'
     if (Test-Path "$localDotnet/dotnet.exe") { $env:DOTNET_ROOT=$localDotnet; $env:Path="$localDotnet;$env:Path" }
@@ -115,6 +147,7 @@ try {
         $env:DOTNET_ROOT=$localDotnet; $env:Path="$localDotnet;$env:Path"
     }
     Run 'dotnet.exe' @('--version')
+    Check 'Local database and API configuration (.env)'
     # Preserve existing shell-compatible .env; never execute its contents.
     if (-not (Test-Path .env)) {
         $rng=[Security.Cryptography.RandomNumberGenerator]::Create(); $bytes=New-Object byte[] 24; $rng.GetBytes($bytes); $rng.Dispose()
@@ -135,13 +168,14 @@ try {
     $env:Cors__Origins__0='http://localhost:8081'; $env:Cors__Origins__1='http://127.0.0.1:8081'
     $env:EXPO_PUBLIC_API_URL='http://127.0.0.1:5080/api/v1'; $env:EXPO_PUBLIC_USE_MOCK='false'; $env:EXPO_OFFLINE='1'
     FreePort 5080; FreePort 8081
+    Check 'Required Docker images'
     $images=@(& docker.exe compose config --images)
     if ($LASTEXITCODE -ne 0) { throw 'Ошибка compose.yaml/.env.' }
     foreach ($image in $images) {
         Probe 'docker.exe' @('image','inspect',$image)
         if ($probeExit -ne 0) { Confirm "Скачать Docker-образ $image?"; Run 'docker.exe' @('pull',$image) }
     }
-    Run 'docker.exe' @('compose','up','-d','--wait','--pull','never')
+    Check 'Each NuGet package in the restored dependency graph'
     $backendHash=HashFiles @('global.json','src/Cube.Api/Cube.Api.csproj','src/Cube.Api/packages.lock.json','tests/Cube.Tests/Cube.Tests.csproj','tests/Cube.Tests/packages.lock.json')
     $backendStamp=Join-Path $state 'backend.sha256'
     $needRestore= -not (Test-Path $backendStamp)
@@ -154,7 +188,7 @@ try {
             if ($lib.Value.type -ne 'package') { continue }
             $found=$false
             foreach ($folder in $a.packageFolders.PSObject.Properties.Name) { if (Test-Path (Join-Path $folder $lib.Value.path)) { $found=$true } }
-            if (-not $found) { $needRestore=$true }
+            if (-not $found) { Write-Host ('[MISSING] NuGet: ' + $lib.Name); $needRestore=$true }
         }
     }
     if ($needRestore) {
@@ -162,21 +196,26 @@ try {
         Run 'dotnet.exe' @('restore','Cube.sln','--locked-mode')
         Set-Content -LiteralPath $backendStamp -Value $backendHash
     }
+    Check 'Frontend packages, including transitive dependencies'
     Push-Location tenant-app-frontend
     try {
         $frontendHash=HashFiles @('package.json','package-lock.json')
         $frontendStamp=Join-Path $state 'frontend.sha256'
         $needNpm= -not (Test-Path $frontendStamp)
         if (-not $needNpm) { $needNpm=((Get-Content $frontendStamp -Raw).Trim() -ne $frontendHash) }
-        if (-not (Test-Path node_modules)) { $needNpm=$true } else { Probe 'npm.cmd' @('ls','--depth=0','--offline'); if ($probeExit -ne 0) { $needNpm=$true } }
+        if (-not (Test-Path node_modules)) { $needNpm=$true } else { Probe 'npm.cmd' @('ls','--all','--offline'); if ($probeExit -ne 0) { $needNpm=$true } }
         if ($needNpm) {
             Confirm 'Разрешить npm ci: восстановить node_modules и скачать недостающие пакеты по package-lock.json?'
             Run 'npm.cmd' @('ci','--no-audit','--no-fund')
             Set-Content -LiteralPath $frontendStamp -Value $frontendHash
         }
+        Run 'npm.cmd' @('ls','--all','--offline')
         Run 'npm.cmd' @('run','typecheck')
     } finally { Pop-Location }
     Run 'dotnet.exe' @('build','Cube.sln','--configuration','Release','--no-restore')
+    Check 'PostgreSQL readiness'
+    $databaseStarted = $true
+    Run 'docker.exe' @('compose','up','-d','--wait','--pull','never','db')
     Run 'dotnet.exe' @('run','--project','src/Cube.Api','--configuration','Release','--no-build','--no-launch-profile','--','--migrate')
     OpenWorker 'backend' 'dotnet.exe run --project src/Cube.Api --configuration Release --no-build --no-launch-profile'
     WaitHttp 'http://127.0.0.1:5080/health/ready'
@@ -184,12 +223,14 @@ try {
     WaitHttp 'http://127.0.0.1:8081'
     Write-Host 'Проект запущен. Окна API и Expo должны оставаться открытыми.'
     Write-Host 'Веб: http://localhost:8081   API: http://127.0.0.1:5080'
-    Write-Host 'Остановка: Ctrl+C в обоих окнах. PostgreSQL: docker compose stop'
+    Write-Host 'Type q in THIS window and press Enter to stop API, Expo and PostgreSQL. Database data is retained.'
     Write-Host 'Администратор автоматически не создаётся; используйте штатную команду --bootstrap-admin с защищёнными переменными Bootstrap__*.'
     Start-Process 'http://localhost:8081'
+    do { $command = Read-Host 'q = stop project' } while ($command.Trim() -ine 'q')
     exit 0
 } catch {
     Write-Host ("ОШИБКА: " + $_.Exception.Message) -ForegroundColor Red
-    Write-Host 'Уже запущенные сервисы автоматически не останавливаются. Их ошибки видны в отдельных окнах.'
     exit 1
+} finally {
+    StopProject
 }
