@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal DisableDelayedExpansion
 chcp 65001 >nul
 set "CUBE_LAUNCHER=%~f0"
 set "CUBE_PROJECT=%~dp0"
@@ -21,7 +21,7 @@ function StopProject {
         if (-not $worker.HasExited) {
             Probe 'taskkill.exe' @('/PID', [string]$worker.Id, '/T', '/F')
             if ($probeExit -ne 0 -and -not $worker.HasExited) {
-                Write-Warning "Could not stop server process $($worker.Id). Close its window manually."
+                Write-Warning "Could not stop server process $($worker.Id). Stop it with Task Manager."
             }
         }
         $worker.Dispose()
@@ -101,17 +101,53 @@ function WaitHttp($url) {
         try { $r=Invoke-WebRequest -UseBasicParsing -Uri $url -TimeoutSec 3; if ($r.StatusCode -eq 200) { return } } catch {}
         Start-Sleep -Seconds 1
     }
-    throw "Сервис не готов: $url. Посмотрите ошибку в открытом окне сервера."
+    throw "Сервис не готов: $url. Логи сервера: $state"
 }
 function FreePort($port) {
-    if (Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue) { throw "Порт $port уже занят. Остановите использующий его процесс и повторите запуск." }
+    if (-not (TestPort $port)) { throw "Порт $port уже занят или недоступен. Остановите использующий его процесс и повторите запуск." }
+}
+function TestPort([int]$port) {
+    $listener = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, $port)
+    try {
+        $listener.Server.ExclusiveAddressUse = $true
+        $listener.Start()
+        return $true
+    } catch [Net.Sockets.SocketException] {
+        return $false
+    } finally { $listener.Stop() }
+}
+function ConfigureDatabasePort([string]$runningPort) {
+    $connection = New-Object System.Data.Common.DbConnectionStringBuilder
+    # Use accessors: PowerShell treats this builder as a dictionary.
+    $connection.set_ConnectionString($env:ConnectionStrings__Cube)
+    $localConnection = $connection['Host'] -in @('127.0.0.1','localhost','::1')
+    $port = 5432
+    if ($localConnection -and $connection.ContainsKey('Port')) { $port = [int]$connection['Port'] }
+    if ($env:CUBE_POSTGRES_PORT) { $port = [int]$env:CUBE_POSTGRES_PORT }
+    if ($port -lt 1 -or $port -gt 65535) { throw 'CUBE_POSTGRES_PORT must be between 1 and 65535.' }
+    if ($runningPort) {
+        $port = [int]$runningPort
+    } elseif (-not (TestPort $port)) {
+        if ($env:CUBE_POSTGRES_PORT) { throw "Configured PostgreSQL port $port is unavailable." }
+        $unavailablePort = $port
+        $port = 5433
+        while ($port -le 5532 -and -not (TestPort $port)) { $port++ }
+        if ($port -gt 5532) { throw 'No available local PostgreSQL port in the range 5432-5532.' }
+        Write-Host "Port $unavailablePort is unavailable; using PostgreSQL port $port for this run."
+    }
+    # Change only the local Compose connection; preserve credentials and the .env file.
+    if ($localConnection) {
+        $connection['Port'] = [string]$port
+        $env:ConnectionStrings__Cube = $connection.get_ConnectionString()
+    }
+    $env:CUBE_POSTGRES_PORT = [string]$port
 }
 function HashFiles($paths) { return (($paths | ForEach-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_).Hash }) -join '-') }
 function OpenWorker($name, $body) {
     $file = Join-Path $state "$name.ps1"
     $prefix = '$ErrorActionPreference="Stop"; Set-Location -LiteralPath ' + "'" + $root.Replace("'","''") + "';`r`n"
     [IO.File]::WriteAllText($file, $prefix + $body, (New-Object Text.UTF8Encoding($true)))
-    $worker = Start-Process powershell.exe -PassThru -ArgumentList @('-NoLogo','-NoProfile','-NoExit','-ExecutionPolicy','Bypass','-File',('"'+$file+'"'))
+    $worker = Start-Process powershell.exe -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $state "$name.log") -RedirectStandardError (Join-Path $state "$name.error.log") -ArgumentList @('-NoLogo','-NoProfile','-NoExit','-ExecutionPolicy','Bypass','-File',('"'+$file+'"'))
     $workers.Add($worker)
 }
 try {
@@ -149,7 +185,7 @@ try {
     Probe 'docker.exe' @('info','--format','{{.OSType}}')
     if ($probeExit -ne 0) {
         $desktop=Join-Path $env:ProgramFiles 'Docker/Docker/Docker Desktop.exe'
-        if (Test-Path $desktop) { Start-Process -FilePath $desktop | Out-Null }
+        if (Test-Path $desktop) { Start-Process -FilePath $desktop -WindowStyle Hidden | Out-Null }
         Write-Host 'Ожидание Docker Desktop (до 120 секунд)...'
         for ($i=0; $i -lt 60; $i++) {
             Probe 'docker.exe' @('info','--format','{{.OSType}}')
@@ -196,7 +232,7 @@ try {
         [IO.File]::WriteAllLines((Join-Path $root '.env'),$lines,(New-Object Text.UTF8Encoding($false)))
         Write-Host 'Создан локальный .env со случайным паролем. Значения не выводятся.'
     }
-    foreach ($line in Get-Content .env) {
+    foreach ($line in Get-Content .env -Encoding UTF8) {
         if ($line -match '^\s*(#|$)') { continue }
         if ($line -notmatch '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$') { throw 'Неподдерживаемый формат .env: ожидается KEY=value.' }
         $key=$matches[1]; $value=$matches[2].Trim()
@@ -208,6 +244,15 @@ try {
     $env:Cors__Origins__0='http://localhost:8081'; $env:Cors__Origins__1='http://127.0.0.1:8081'
     $env:EXPO_PUBLIC_API_URL='http://127.0.0.1:5080/api/v1'; $env:EXPO_PUBLIC_USE_MOCK='false'; $env:EXPO_OFFLINE='1'
     FreePort 5080; FreePort 8081
+    $runningDatabase = @(& docker.exe compose ps --status running --quiet db)
+    if ($LASTEXITCODE -ne 0) { throw 'Could not inspect the Compose database.' }
+    $runningPort = $null
+    if ($runningDatabase.Count -gt 0) {
+        $binding = & docker.exe compose port db 5432
+        if ($LASTEXITCODE -ne 0) { throw 'Could not inspect the running PostgreSQL port.' }
+        $runningPort = ($binding -split ':')[-1]
+    }
+    ConfigureDatabasePort $runningPort
     Check 'Required Docker images'
     $images=@(& docker.exe compose config --images)
     if ($LASTEXITCODE -ne 0) { throw 'Ошибка compose.yaml/.env.' }
@@ -249,24 +294,28 @@ try {
             Run 'npm.cmd' @('ci','--no-audit','--no-fund')
             Set-Content -LiteralPath $frontendStamp -Value $frontendHash
         }
-        Run 'npm.cmd' @('ls','--all','--offline')
+        Probe 'npm.cmd' @('ls','--all','--offline')
+        if ($probeExit -ne 0) { throw 'Frontend dependency validation failed. Run npm ls --all --offline in tenant-app-frontend for details.' }
         Run 'npm.cmd' @('run','typecheck')
     } finally { Pop-Location }
     Run 'dotnet.exe' @('build','Cube.sln','--configuration','Release','--no-restore')
     Check 'PostgreSQL readiness'
-    $databaseStarted = $true
+    $databaseStarted = ($runningDatabase.Count -eq 0)
     Run 'docker.exe' @('compose','up','-d','--wait','--pull','never','db')
     Run 'dotnet.exe' @('run','--project','src/Cube.Api','--configuration','Release','--no-build','--no-launch-profile','--','--migrate')
     OpenWorker 'backend' 'dotnet.exe run --project src/Cube.Api --configuration Release --no-build --no-launch-profile'
     WaitHttp 'http://127.0.0.1:5080/health/ready'
     OpenWorker 'frontend' "Set-Location tenant-app-frontend; npm.cmd run web -- --port 8081"
     WaitHttp 'http://127.0.0.1:8081'
-    Write-Host 'Проект запущен. Окна API и Expo должны оставаться открытыми.'
+    Write-Host "Проект запущен. Логи API и Expo: $state"
     Write-Host 'Веб: http://localhost:8081   API: http://127.0.0.1:5080'
     Write-Host 'Type q in THIS window and press Enter to stop API, Expo and PostgreSQL. Database data is retained.'
     Write-Host 'Администратор автоматически не создаётся; используйте штатную команду --bootstrap-admin с защищёнными переменными Bootstrap__*.'
     Start-Process 'http://localhost:8081'
-    do { $command = Read-Host 'q = stop project' } while ($command.Trim() -ine 'q')
+    do {
+        if ([Console]::IsInputRedirected) { $command = [Console]::ReadLine() }
+        else { $command = Read-Host 'q = stop project' }
+    } while ($null -ne $command -and $command.Trim() -ine 'q')
     exit 0
 } catch {
     Write-Host ("ОШИБКА: " + $_.Exception.Message) -ForegroundColor Red

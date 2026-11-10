@@ -8,7 +8,9 @@ ASP.NET Core 10, EF Core/Npgsql and PostgreSQL 17 backend for the commercial-pro
 
 Run `start-cube.bat` from the repository root (or pass the checkout directory as its first argument). The launcher checks Node.js/npm, the pinned .NET SDK, Docker Desktop/Compose and project dependencies. Every installation or dependency download requires console confirmation; declining stops startup. Docker Desktop requires Linux containers and may need WSL2 setup and a reboot after its first installation.
 
-The launcher preserves an existing `.env`, starts PostgreSQL, builds the backend, applies migrations and starts API/Expo in separate windows. Keep the launcher window open. Type `q` and press Enter in that window to stop the API and Expo process trees and the project PostgreSQL container while retaining its data. Startup failures also clean up processes started by the launcher. If the launcher window is forcibly closed, stop servers with Ctrl+C in their windows and run `docker compose stop db` from the repository root. No administrator is created automatically. On the first run or after dependency changes, `npm ci` recreates `node_modules` using the lockfile and available cache. The Windows launcher has not yet been executed on Windows CI.
+The launcher preserves an existing `.env`, starts PostgreSQL, builds the backend, applies migrations and starts API/Expo in the background. Logs are in `.data/windows-launcher` (`backend.log`, `frontend.log` and their `.error.log` files). Keep the launcher window open. Type `q` and press Enter in that window to stop the API and Expo process trees and any PostgreSQL container started by this launch, retaining its data. An already-running project database is reused and left running. Startup failures also clean up processes started by the launcher. If the launcher window is forcibly closed, stop its server processes with Task Manager and run `docker compose stop db` from the repository root. No administrator is created automatically. On the first run or after dependency changes, `npm ci` recreates `node_modules` using the lockfile and available cache. The Windows launcher has not yet been executed on Windows CI.
+
+For a local API connection, the launcher uses the PostgreSQL port in `ConnectionStrings__Cube` (5432 if omitted) for Compose as well. If that port is unavailable, it selects a free port in 5433–5532 and adjusts the API connection for this run without rewriting `.env`. Set `CUBE_POSTGRES_PORT` in `.env` to require a specific port; an unavailable explicit port fails startup. Direct `docker compose` commands also honor `CUBE_POSTGRES_PORT`, defaulting to 5432. Run launcher regression checks with `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-windows-launcher.ps1`.
 
 Prerequisites: the SDK pinned in `global.json`, Python 3, Docker Engine and Docker Compose. Development data uses a named PostgreSQL volume; uploaded files use ignored `.data/files`. Nothing creates a default administrator or seeds real tenant data.
 
@@ -30,6 +32,8 @@ scripts/dev.sh test
 Tests create and drop uniquely named PostgreSQL databases. Use an isolated development/CI database role with `CREATEDB`; never point `CUBE_TEST_DATABASE` at production. Tests apply actual migrations and use the real Npgsql provider. Unit tests and HTTP/database tests are in `tests/Cube.Tests`.
 
 ## Authentication and first workflow
+
+For a populated local demonstration with admin, staff and tenant accounts, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/seed-demo.ps1`. See [demo data and walkthrough](docs/demo-data.md); generated credentials are saved in ignored `.data/demo-accounts.json`.
 
 1. Bootstrap the administrator, then `POST /api/v1/auth/login` with `loginName` and `password`. Send the returned access token in `Authorization: Bearer ...`.
 2. A tenant submits `POST /api/v1/auth/register` with login/password, email, fullName, organization, INN and phone. Access remains pending.

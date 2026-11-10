@@ -52,6 +52,12 @@ app.MapGet("/health/live", () => Results.Ok(new { Status = "Alive" }));
 app.MapGet("/health/ready", async (CubeDb db, CancellationToken ct) => { try { return await db.Database.CanConnectAsync(ct) && !(await db.Database.GetPendingMigrationsAsync(ct)).Any() ? Results.Ok(new { Status = "Ready" }) : Results.StatusCode(503); } catch { return Results.StatusCode(503); } });
 app.MapAuth(); app.MapStaff(); app.MapAdmin(); app.MapRequests(); app.MapTenantFeatures(); app.MapNews(); app.MapFiles(); app.MapMedia(); app.MapDetails();
 
+if (args.Contains("--seed-demo"))
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    await DemoSeed.Run(scope.ServiceProvider, app.Environment, builder.Configuration);
+    return;
+}
 if (args.Contains("--migrate"))
 {
     await using var scope = app.Services.CreateAsyncScope(); var db = scope.ServiceProvider.GetRequiredService<CubeDb>(); await db.Database.MigrateAsync(); await Seed.Categories(db); return;
