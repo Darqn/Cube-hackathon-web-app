@@ -47,6 +47,46 @@ function Run($command, [string[]]$arguments) {
     & $command @arguments
     if ($LASTEXITCODE -ne 0) { throw "Ошибка команды $command (код $LASTEXITCODE)." }
 }
+function DownloadFile($url, $destination) {
+    # Stream to disk with a percentage display; retain normal TLS verification.
+    $response = $null; $inputStream = $null; $outputStream = $null
+    $complete = $false
+    try {
+        $request = [Net.HttpWebRequest]::Create($url)
+        $request.Timeout = 30000
+        $request.ReadWriteTimeout = 60000
+        $response = $request.GetResponse()
+        $total = $response.ContentLength
+        $inputStream = $response.GetResponseStream()
+        $outputStream = [IO.File]::Create($destination)
+        $buffer = New-Object byte[] 131072
+        [long]$received = 0
+        $lastPercent = -1
+        if ($total -le 0) { Write-Host 'Downloading SDK (server did not provide total size)...' }
+        while (($count = $inputStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $outputStream.Write($buffer, 0, $count)
+            $received += $count
+            if ($total -gt 0) {
+                $percent = [int][Math]::Min(99, [Math]::Floor(100.0 * $received / $total))
+                if ($percent -ne $lastPercent) {
+                    Write-Host -NoNewline ("`rDownloading SDK: {0,3}%" -f $percent)
+                    $lastPercent = $percent
+                }
+            }
+        }
+        if ($total -ge 0 -and $received -ne $total) { throw 'SDK download was incomplete.' }
+        $complete = $true
+        Write-Host "`rDownloading SDK: 100%"
+    } finally {
+        if ($outputStream) { $outputStream.Dispose() }
+        if ($inputStream) { $inputStream.Dispose() }
+        if ($response) { $response.Close() }
+        if (-not $complete) {
+            Write-Host ''
+            if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination }
+        }
+    }
+}
 function RefreshPath {
     $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User') + ';' + $env:Path
 }
@@ -139,7 +179,7 @@ try {
         $files=@($metadata.releases | ForEach-Object { $_.sdks } | Where-Object version -eq $sdk | ForEach-Object { $_.files } | Where-Object { $_.rid -eq "win-$arch" -and $_.name.EndsWith('.zip') })
         if ($files.Count -ne 1) { throw 'Не найден однозначный официальный архив SDK.' }
         $zip=Join-Path $state 'dotnet-sdk.zip'
-        Invoke-WebRequest -UseBasicParsing $files[0].url -OutFile $zip
+        DownloadFile $files[0].url $zip
         if ((Get-FileHash $zip -Algorithm SHA512).Hash -ne $files[0].hash) { Remove-Item $zip; throw 'SHA512 архива SDK не совпадает.' }
         New-Item -ItemType Directory -Force $localDotnet | Out-Null
         Expand-Archive -LiteralPath $zip -DestinationPath $localDotnet -Force
