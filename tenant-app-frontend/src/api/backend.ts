@@ -63,6 +63,8 @@ export const backend = {
     const [meters, premises] = await Promise.all([get<Meter[]>('/meters'), backend.myPremises()]);
     return (await Promise.all(meters.map(async m => (await all<Entity & { previousValue: number; value: number; photoId?: string }>(`/meters/${m.id}/readings`)).map(r => ({ id: r.id, premiseId: m.premisesId, premiseName: premises.find(p => p.id === m.premisesId)?.name ?? m.serialNumber, meterType: (m.type === 'Water' ? 'water' : 'electricity') as T.MeterType, previous: r.previousValue, value: r.value, date: r.createdAt, photoUrl: r.photoId ? `/api/v1/files/${r.photoId}` : null }))))).flat().sort((a, b) => b.date.localeCompare(a.date));
   },
+  recognizeMeter: async (file: T.LocalFile): Promise<{ value: string | null; message: string | null }> =>
+    request<{ value: string | null; message: string | null }>('POST', '/meters/recognize', { form: await fileForm(file) }),
   sendMeter: async (i: T.NewMeterReading) => { const m = i.meterId ? { id: i.meterId } : await findMeter(i.premiseId, i.meterType); await request('POST', `/meters/${m.id}/readings`, { body: { value: i.value, photoId: i.photo ? await upload(i.photo) : null } }); },
   requests: async () => { const [rows, cats] = await Promise.all([all<Ticket>('/requests'), categories()]); return rows.map(r => ticket(r, cats)); },
   request: async (id: string) => { const [d, cats] = await Promise.all([get<Detail>(`/requests/${id}`), categories()]); return ticket(d.request, cats, d.attachments.map(a => ({ id: a.id, name: `Вложение ${a.fileId.slice(0, 8)}`, url: `/api/v1/files/${a.fileId}` }))); },

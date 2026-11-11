@@ -186,6 +186,7 @@ export const mock = {
       .sort((a, b) => b.date.localeCompare(a.date))[0];
     return wait(last ? last.value : type === 'water' ? 100 : 1000, 250);
   },
+  recognizeMeter: async (_file: LocalFile): Promise<{ value: string | null; message: string | null }> => ({ value: null, message: 'В демонстрационном режиме распознавание недоступно. Введите показание вручную' }),
   meterHistory: () => wait(clone([...meters].sort((a, b) => b.date.localeCompare(a.date)))),
   sendMeter(input: NewMeterReading): Promise<void> {
     const premise = premises.find((p) => p.id === input.premiseId);

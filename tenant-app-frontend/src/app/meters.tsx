@@ -81,6 +81,7 @@ function MeterForm({ premises }: { premises: MyPremise[] }) {
   const meter = available.find(m => m.id === chosen) ?? available[0];
   const [photo, setPhoto] = useState<LocalFile[]>([]);
   const [error, setError] = useState<string | undefined>();
+  const [recognitionMessage, setRecognitionMessage] = useState<string | undefined>();
 
   const previous = useQuery({
     queryKey: ['meter-prev', premiseId, meterType, meter?.id],
@@ -95,12 +96,25 @@ function MeterForm({ premises }: { premises: MyPremise[] }) {
       toast('Показания отправлены ответственному сотруднику');
       setValue('');
       setPhoto([]);
+      setRecognitionMessage(undefined);
       void qc.invalidateQueries({ queryKey: ['meter-history'] });
       void qc.invalidateQueries({ queryKey: ['meter-prev'] });
       void qc.invalidateQueries({ queryKey: ['meters'] });
       void qc.invalidateQueries({ queryKey: ['notifications'] });
     },
     onError: (e) => toast(errorMessage(e), 'error'),
+  });
+
+  const recognize = useMutation({
+    mutationFn: (file: LocalFile) => api.recognizeMeter(file),
+    onSuccess: (result) => {
+      if (result.value !== null) {
+        setValue(result.value);
+        setError(undefined);
+        setRecognitionMessage('Проверьте распознанное показание перед отправкой');
+      } else setRecognitionMessage(result.message || 'Не удалось уверенно распознать. Введите показание вручную');
+    },
+    onError: () => setRecognitionMessage('Не удалось уверенно распознать. Введите показание вручную'),
   });
 
   const submit = () => {
@@ -149,7 +163,12 @@ function MeterForm({ premises }: { premises: MyPremise[] }) {
         error={error}
       />
       <TextField label="Дата передачи" value={fmtDate(new Date().toISOString())} editable={false} />
-      <AttachmentPicker files={photo} onChange={setPhoto} max={1} label="Фото счётчика (необязательно)" />
+      <AttachmentPicker files={photo} onChange={(files) => { setPhoto(files); setRecognitionMessage(undefined); }} max={1} label="Фото счётчика (необязательно)" />
+      <Button title="Распознать показания" icon="scan" loading={recognize.isPending}
+        disabled={photo.length === 0 || recognize.isPending || send.isPending || meterType !== 'electricity'}
+        onPress={() => { setRecognitionMessage(undefined); recognize.mutate(photo[0]); }} />
+      {meterType !== 'electricity' ? <AppText variant="small">Распознавание пока доступно только для электросчётчика.</AppText> : null}
+      {recognitionMessage ? <AppText variant="small">{recognitionMessage}</AppText> : null}
       <Button title="Отправить" icon="send" loading={send.isPending} disabled={previous.isPending || previous.isError || (!USE_MOCK && !meter)} onPress={submit} />
     </Card>
   );
