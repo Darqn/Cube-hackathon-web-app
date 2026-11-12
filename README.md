@@ -37,6 +37,8 @@ Tests create and drop uniquely named PostgreSQL databases. Use an isolated devel
 
 ## Authentication and first workflow
 
+For an Ubuntu VPS with HTTPS, PostgreSQL, persistent uploads and Tesseract, use the separate [Ubuntu VPS deployment guide](docs/ubuntu-vps.md). It supports a temporary `sslip.io` hostname when you do not own a domain.
+
 The combined branch review is described in [branch integration](docs/branch-integration.md). Optional electricity meter OCR requires a local Tesseract executable; see [installation, limits and checks](docs/meter-ocr.md). Recognition suggests a value and never submits a reading automatically.
 
 For a populated local demonstration with admin, staff and tenant accounts, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/seed-demo.ps1`. See [demo data and walkthrough](docs/demo-data.md); generated credentials are saved in ignored `.data/demo-accounts.json`.

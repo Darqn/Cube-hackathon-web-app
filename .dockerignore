@@ -1,0 +1,13 @@
+.git
+.tools
+.data
+**/.data
+**/.env
+**/.env.*
+**/bin
+**/obj
+**/TestResults
+**/node_modules
+tenant-app-frontend
+tests
+docs

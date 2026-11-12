@@ -1,0 +1,13 @@
+name: Ubuntu VPS deployment
+on: [push, pull_request]
+jobs:
+  docker-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell scripts
+        run: bash -n scripts/vps.sh scripts/install-docker-ubuntu.sh deploy/vps/init-app-role.sh
+      - name: Build the exact deployment image
+        run: docker build --tag cube-api:local .
+      - name: Test deployment with real PostgreSQL, TLS and Tesseract
+        run: python3 scripts/test-vps.py

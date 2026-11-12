@@ -33,6 +33,7 @@ public static class CubeHostingExtensions
         builder.Services.AddScoped<PaymentLedger>();
         builder.Services.AddOpenApi();
         builder.Services.AddProblemDetails();
+        builder.Services.AddCubeReverseProxy(builder.Configuration);
         builder.Services.AddRateLimiter(o =>
         {
             o.RejectionStatusCode = 429;
@@ -50,6 +51,8 @@ public static class CubeHostingExtensions
 
     public static WebApplication UseCubeHttp(this WebApplication app)
     {
+        if (app.Configuration.GetValue<bool>("ReverseProxy:Enabled"))
+            app.UseForwardedHeaders();
         app.UseExceptionHandler();
         app.UseMiddleware<ApiErrorMiddleware>();
         if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"))

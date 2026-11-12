@@ -1,0 +1,76 @@
+name: cube-vps
+services:
+  db:
+    image: postgres:17.7-bookworm@sha256:86e0b703649d7a792bd9243ee28afc9d8f7c6b2b5638077c9d6882d4d472bbfd
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cube
+      POSTGRES_USER: cube_owner
+      POSTGRES_PASSWORD: ${CUBE_OWNER_PASSWORD:?Run scripts/vps.sh init first}
+      CUBE_APP_PASSWORD: ${CUBE_APP_PASSWORD:?Run scripts/vps.sh init first}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./init-app-role.sh:/docker-entrypoint-initdb.d/010-cube-app.sh:ro
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U cube_owner -d cube"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  api:
+    image: ${CUBE_API_IMAGE:-cube-api:local}
+    build:
+      context: ../..
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__Cube: Host=db;Port=5432;Database=cube;Username=cube_app;Password=${CUBE_APP_PASSWORD:?Run scripts/vps.sh init first}
+      ReverseProxy__Enabled: "true"
+      ReverseProxy__KnownProxies__0: ${CUBE_PROXY_IP:-172.30.231.10}
+      ReverseProxy__KnownProxies__1: 127.0.0.1
+      ReverseProxy__KnownProxies__2: ::1
+      Cors__Origins__0: ${CUBE_WEB_ORIGIN:-http://localhost:8081}
+      Cors__Origins__1: http://127.0.0.1:8081
+      Notifications__WorkerEnabled: "true"
+      Files__AllowUnscannedDevelopmentUploads: "false"
+    volumes:
+      - files:/var/lib/cube/files
+      - keys:/home/app/.aspnet/DataProtection-Keys
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend]
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --max-time, "3", --header, "X-Forwarded-Proto: https", "http://127.0.0.1:8080/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+  gateway:
+    image: caddy:2-alpine@sha256:78bd35025c7ba85961dd149ae670315129954e77abe2383ac47c89106b35ade9
+    restart: unless-stopped
+    environment:
+      CUBE_API_HOST: ${CUBE_API_HOST:?Run scripts/vps.sh init first}
+    ports:
+      - "${CUBE_BIND_IP:-0.0.0.0}:${CUBE_HTTP_PORT:-80}:80"
+      - "${CUBE_BIND_IP:-0.0.0.0}:${CUBE_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      backend:
+        ipv4_address: ${CUBE_PROXY_IP:-172.30.231.10}
+networks:
+  backend:
+    ipam:
+      config:
+        - subnet: ${CUBE_SUBNET:-172.30.231.0/24}
+volumes:
+  postgres:
+  files:
+  keys:
+  caddy-data:
+  caddy-config:
