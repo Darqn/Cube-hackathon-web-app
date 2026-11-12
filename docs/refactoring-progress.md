@@ -39,3 +39,46 @@
 - Преимущество: для добавления возможности понятен модуль-владелец; scheduler не зависит от HTTP; file validation/quarantine/write/rollback сопровождаются в одном месте.
 - Проверено: **97 passed, 0 failed, 0 skipped**, Release без warnings/errors. Новые integration cases проверяют фактическое удаление файла после реального отказа PostgreSQL, targeting news attachments, invalid listing photo и отзыв фото после archive, preferences/blocking/deduplication scheduler. OpenAPI и EF snapshot совпадают.
 - Риски: scheduler пока сохраняет запросы на каждого пользователя и отдельные INSERT — batching требует измерений. Простые CRUD и отдельные Identity/administration сценарии пока используют прежние прямые вызовы EF/UserManager и Guard; полный переход всего API на CQRS/Outcome не выполняется ради паттерна.
+
+## 5. Persistence, оформление и финальная проверка
+
+- Обнаружено: общая EF-конфигурация скрывала владельцев ограничений/relationships; компактные многооператорные методы затрудняли чтение перемещённого кода.
+- Решение: IEntityTypeConfiguration по владельцам с явной регистрацией; исходные conventions, CLR identity, constraints и индексы сохранены. Существующий editorconfig дополнен правилами оформления без подавления diagnostics; auto-properties остаются компактными.
+- Изменено: конфигурации 22 сущностей вынесены из CubeDb; форматирование рукописного C# и удаление unused imports; добавлена текущая архитектура и ссылка README. Миграции исключены из форматирования.
+- Преимущество: persistence-настройки находятся рядом с областью, а CubeDb показывает общие conventions и список конфигураций. Изменения оформления выделены отдельным коммитом.
+- Проверено: locked restore, финальная Release build — **0 warnings, 0 errors**; полный suite — **97 passed, 0 failed, 0 skipped**. Все исходные 49 test cases сохранены, добавлено 48. Architecture, DI, JSON/OpenAPI и EF snapshot tests включены в существующую CI-команду. Fingerprints всех 12 исходных migration/SDK/lockfile artifacts совпадают; diff миграций, SDK pin, dependency lockfiles, appsettings и compose пуст.
+- Проверено для frontend: `npm ci --no-audit --no-fund` по прежнему lockfile, `npm run typecheck` — успешно, `npm test` — **20 passed**. Зависимости не обновлялись; npm сообщает deprecation notices существующих transitive packages.
+- Проверено в браузере: `expo export --platform web`, затем все существующие Playwright suites в локальном Chromium с реальными API/PostgreSQL — **13 passed**: admin 3, design 5, employee 3, portal 2. Проверены desktop/mobile workflows, приватные ответы/файлы, status/review и tenant portal. API перезапускался между suites, сохраняя исходные rate-limit defaults. Были выполнены CLI migrations и bootstrap для отдельной временной базы.
+- Очистка: fixtures/browser-базы удалены; отдельный запрос к pg_database не обнаружил оставшихся `cube_tests_%`/`cube_refactor_browser_%`. Browser API/web процессы остановлены; временный PostgreSQL-контейнер удалён. Production данные и инфраструктура не использовались.
+- Риски: browser run проверяет локальное Development окружение, а не production deployment/физические устройства. Реальные integrations, scanner, нагрузка и аварийное восстановление не проверялись.
+
+Команды финальной проверки:
+
+```bash
+dotnet restore Cube.sln --locked-mode
+dotnet build Cube.sln --configuration Release --no-restore
+dotnet test Cube.sln --configuration Release --no-build --no-restore \
+  --logger 'trx;LogFileName=final.trx' \
+  --results-directory /workspace/.cube-tools/refactor-results
+# tenant-app-frontend:
+npm ci --no-audit --no-fund
+npm run typecheck
+npm test
+```
+
+Browser runner для данной сессии находится вне репозитория: `/workspace/.cube-tools/browser-check.py`. Он использовал существующие test suites без изменения тестовых сценариев, отдельные credentials/DB, Expo export и последовательный `npx playwright test <suite> --output <artifact-dir> --reporter=line`. Результаты: `/workspace/.cube-tools/browser-results/summary.json`, backend TRX — `/workspace/.cube-tools/refactor-results/final.trx`.
+
+## Критерии завершения и оставшиеся ограничения
+
+| Критерий | Результат |
+| --- | --- |
+| Организация по функциям | Выполнена для восьми областей; cross-feature workflow и API dashboards выделены отдельно |
+| Сохранение API/БД/версий | Проверены OpenAPI 94 paths / 110 operations / 53 schemas, реальные JSON/error/security cases и browser workflows; EF snapshot и неизменность migration/lock artifacts |
+| Сборка и прежние тесты | Release без warnings/errors; все прежние тесты проходят; 97 backend, 20 frontend, 13 browser scenarios |
+| Существенное дублирование | Общая загрузка/rollback файлов, async notification I/O, resource visibility и request factory выделены |
+| Бизнес-сценарии вне HTTP | Выполнено для Requests/Metering/RentalInquiry/Scheduler; часть простых CRUD и Identity операций сохраняет прямую EF/UserManager orchestration в endpoint. Полная миграция каждого endpoint в отдельный handler не выполнялась |
+| Независимость от инфраструктуры | Domain чистый; application handlers используют EF непосредственно по принятому упрощению. Строгая Clean Architecture с независимой application assembly не достигалась и не заявляется |
+| Автоматические границы | Проверяются domain/application dependencies и циклы namespaced module components; все обращения к чужим DbSet внутри общей сборки автоматически не изолированы |
+| Производительность | Блокирующий notification DB I/O заменён async; количественное улучшение throughput не измерялось. Scheduler batching остаётся отдельной задачей |
+
+Отдельного согласования требуют исправления исходного 500 без tenant-контекста, классификации DbUpdateException/Response.HasStarted, изменения бизнес-правил, API/OpenAPI, схемы БД, ключевых версий, production configuration и включения внешних integrations. Эти изменения не выполнялись. Файловая компенсация остаётся best-effort при process crash/cleanup failure; distributed transaction или recovery worker не добавлялись.

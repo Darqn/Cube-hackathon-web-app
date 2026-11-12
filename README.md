@@ -2,6 +2,8 @@
 
 ASP.NET Core 10, EF Core/Npgsql and PostgreSQL 17 backend for the commercial-property tenant application. The original Russian brief and five mockups remain in the repository. The [implementation plan](docs/backend-plan.md) was written before application code.
 
+The backend is organized by business capability inside one API project. See the [current architecture](docs/architecture.md), [architecture audit](docs/architecture-audit.md) and [refactoring validation record](docs/refactoring-progress.md) for ownership, dependency rules and compatibility checks.
+
 ## Run locally
 
 ### Windows
