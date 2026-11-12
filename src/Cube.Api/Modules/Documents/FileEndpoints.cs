@@ -1,67 +1,28 @@
+using Cube.Api.Api.Files;
+using Cube.Api.Infrastructure.Storage;
 using Cube.Api.Contracts;
-using System.IO.Compression;
 using Microsoft.EntityFrameworkCore;
+
 namespace Cube.Api;
 
-public sealed class PrivateStorage(IConfiguration config, IWebHostEnvironment environment) : Cube.Api.Common.Storage.IPrivateFileStore
-{
-    public Task WriteAsync(string key, byte[] bytes, CancellationToken ct)
-    {
-        Directory.CreateDirectory(Root);
-        return File.WriteAllBytesAsync(PathFor(key), bytes, ct);
-    }
-    public void Delete(string key) => File.Delete(PathFor(key));
-    public string Root { get; } = Path.GetFullPath(config["Files:Root"] ?? Path.Combine(environment.ContentRootPath, ".data", "files"));
-    public bool AllowDevelopmentFiles => environment.IsDevelopment() && config.GetValue<bool>("Files:AllowUnscannedDevelopmentUploads");
-    public string PathFor(string key) { Guard.That(key.Length == 32 && key.All(Uri.IsHexDigit), "invalid_storage_key"); return Path.Combine(Root, key); }
-    public static string Validate(byte[] bytes, string filename)
-    {
-        Guard.That(bytes.Length > 0 && bytes.Length <= 20 * 1024 * 1024, "invalid_file_size", 413);
-        var ext = Path.GetExtension(filename).ToLowerInvariant();
-        bool Is(params byte[] prefix) => bytes.AsSpan().StartsWith(prefix);
-        return ext switch
-        {
-            ".pdf" when Is(37, 80, 68, 70, 45) => "application/pdf",
-            ".jpg" or ".jpeg" when Is(255, 216, 255) => "image/jpeg",
-            ".png" when Is(137, 80, 78, 71, 13, 10, 26, 10) => "image/png",
-            ".doc" when Is(208, 207, 17, 224, 161, 177, 26, 225) => "application/msword",
-            ".xls" when Is(208, 207, 17, 224, 161, 177, 26, 225) => "application/vnd.ms-excel",
-            ".docx" or ".xlsx" when Is(80, 75, 3, 4) => ValidateOffice(bytes, ext),
-            _ => throw new ApiError(400, "unsupported_or_invalid_file")
-        };
-    }
-    private static string ValidateOffice(byte[] bytes, string extension)
-    {
-        try
-        {
-            using var zip = new ZipArchive(new MemoryStream(bytes));
-            Guard.That(zip.Entries.Count <= 2000 && zip.Entries.Sum(x => x.Length) <= 100 * 1024 * 1024, "unsafe_office_archive");
-            Guard.That(zip.Entries.All(x => !x.FullName.Contains("..") && !x.FullName.StartsWith('/') && !x.FullName.Contains('\\') && !x.FullName.EndsWith("vbaProject.bin", StringComparison.OrdinalIgnoreCase)), "unsafe_office_archive");
-            Guard.That(zip.GetEntry("[Content_Types].xml") is not null && zip.GetEntry(extension == ".docx" ? "word/document.xml" : "xl/workbook.xml") is not null, "invalid_office_document");
-            return extension == ".docx" ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-        }
-        catch (InvalidDataException) { throw new ApiError(400, "invalid_office_document"); }
-    }
-}
 public static class FileEndpoints
 {
     public record DocumentInput(Guid TenantId, Guid FileId, string Title, string Kind, string Number, DateOnly DocumentDate, Guid? LeaseId, Guid? PremisesId) : IApiRequest;
     public record ArchiveInput(bool Archived) : IApiRequest;
     public record StatementInput(Guid FileId, string Title, Guid? LeaseId, Guid? PremisesId) : IApiRequest;
-    public record AttachmentInput(Guid FileId) : IApiRequest;
     public static void MapFiles(this WebApplication app)
     {
         var g = app.MapGroup("/api/v1").AddEndpointFilter<InputValidationFilter>().RequireAuthorization().WithTags("Files and documents");
-        g.MapPost("/files", async (HttpRequest request, Guid? tenantId, Access a, CubeDb db, PrivateStorage storage, CancellationToken ct) =>
+        g.MapPost("/files", async (HttpRequest request, Guid? tenantId, Access a, CubeDb db, PrivateStorage storage, FileWriteBatch files, CancellationToken ct) =>
         {
             var owner = a.Admin ? tenantId ?? throw new ApiError(400, "tenant_id_required") : a.TenantId; Guard.That(!a.Staff || a.Admin, "staff_upload_forbidden", 403);
             Guard.That(await db.Tenants.AnyAsync(x => x.Id == owner, ct), "tenant_not_found", 404); Guard.That(request.HasFormContentType, "multipart_required");
-            var form = await request.ReadFormAsync(ct); Guard.That(form.Files.Count == 1, "one_file_required"); var upload = form.Files[0]; Guard.That(upload.Length > 0 && upload.Length <= 20 * 1024 * 1024, "invalid_file_size", 413);
-            var name = Path.GetFileName(upload.FileName); Guard.That(name.Length is > 0 and <= 200 && !name.Any(char.IsControl), "invalid_filename");
-            using var buffer = new MemoryStream(); await upload.CopyToAsync(buffer, ct); var bytes = buffer.ToArray(); var contentType = PrivateStorage.Validate(bytes, name);
-            var file = new StoredFile { TenantId = owner, UploadedBy = a.UserId, Key = Guid.NewGuid().ToString("N"), Name = name, ContentType = contentType, Size = bytes.LongLength, State = storage.AllowDevelopmentFiles ? "Ready" : "Quarantined" };
-            Directory.CreateDirectory(storage.Root); var path = storage.PathFor(file.Key); await File.WriteAllBytesAsync(path, bytes, ct);
-            try { db.Files.Add(file); await db.SaveChangesAsync(ct); } catch { File.Delete(path); throw; }
+            var form = await request.ReadFormAsync(ct);
+            Guard.That(form.Files.Count == 1, "one_file_required");
+            var upload = await UploadedFileReader.ReadAsync(form.Files[0], ct);
+            var file = new StoredFile { TenantId = owner, UploadedBy = a.UserId, Key = Guid.NewGuid().ToString("N"), Name = upload.Name, ContentType = upload.ContentType, Size = upload.Bytes.LongLength, State = storage.AllowDevelopmentFiles ? "Ready" : "Quarantined" };
+            db.Files.Add(file);
+            await files.SaveAsync([new(file.Key, upload.Bytes)], async token => { await db.SaveChangesAsync(token); }, ct);
             return Results.Created($"/api/v1/files/{file.Id}", new { file.Id, file.Name, file.ContentType, file.Size, file.State });
         }).RequireRateLimiting("auth");
         g.MapGet("/files/{id:guid}", Download);
@@ -70,10 +31,10 @@ public static class FileEndpoints
             var invoice = await a.Own<Invoice>().SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new ApiError(404, "invoice_not_found"); Guard.That(invoice.FileId.HasValue, "invoice_file_not_found", 404); return await Download(invoice.FileId!.Value, a, db, storage, ct);
         });
         g.MapGet("/documents", async (Access a, string? kind, int? page, int? size, CancellationToken ct) => await a.Own<Document>().Where(x => !x.Archived && (kind == null || x.Kind == kind)).OrderByDescending(x => x.DocumentDate).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct));
-        g.MapPost("/statements", async (StatementInput i, Access a, CubeDb db, CancellationToken ct) =>
+        g.MapPost("/statements", async (StatementInput i, Access a, CubeDb db, TimeProvider clock, CancellationToken ct) =>
         {
             Guard.That(!a.Staff, "tenant_required", 403); await ValidateReferences(a.TenantId, i.FileId, i.LeaseId, i.PremisesId, db, ct);
-            var d = new Document { TenantId = a.TenantId, FileId = i.FileId, Title = Guard.Text(i.Title, "title"), Kind = "Statement", DocumentDate = DateOnly.FromDateTime(DateTime.UtcNow), LeaseId = i.LeaseId, PremisesId = i.PremisesId, Status = "UnderReview" }; db.Documents.Add(d); Events.Queue(db, "Bitrix", "StatementSubmitted", d.Id); await db.SaveChangesAsync(ct); return Results.Created($"/api/v1/documents/{d.Id}", d);
+            var d = new Document { TenantId = a.TenantId, FileId = i.FileId, Title = Guard.Text(i.Title, "title"), Kind = "Statement", DocumentDate = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime), LeaseId = i.LeaseId, PremisesId = i.PremisesId, Status = "UnderReview" }; db.Documents.Add(d); Events.Queue(db, "Bitrix", "StatementSubmitted", d.Id); await db.SaveChangesAsync(ct); return Results.Created($"/api/v1/documents/{d.Id}", d);
         });
         g.MapGet("/documents/{id:guid}", async (Guid id, Access a, CancellationToken ct) => await a.Own<Document>().SingleOrDefaultAsync(x => x.Id == id && !x.Archived, ct) is Document d ? Results.Ok(d) : Results.NotFound());
         g.MapGet("/documents/{id:guid}/file", async (Guid id, Access a, CubeDb db, PrivateStorage storage, CancellationToken ct) =>

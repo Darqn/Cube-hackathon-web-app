@@ -7,6 +7,7 @@ using Cube.Api.Modules.Identity;
 using Cube.Api.Modules.Requests;
 using Cube.Api.Modules.Metering;
 using Cube.Api.Modules.Property;
+using Cube.Api.Modules.Notifications;
 using Cube.Api.Infrastructure.Persistence;
 using Cube.Api.Workflows;
 using Microsoft.AspNetCore.RateLimiting;
@@ -24,6 +25,7 @@ public static class CubeHostingExtensions
         builder.Services.AddIdentityModule();
         builder.Services.AddRequestsModule();
         builder.Services.AddMeteringModule();
+        builder.Services.AddNotificationsModule();
         builder.Services.AddScoped<TenantScope>();
         builder.Services.AddScoped<ActiveLeases>();
         builder.Services.AddScoped<RentalInquiryWorkflow>();

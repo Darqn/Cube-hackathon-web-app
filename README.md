@@ -58,7 +58,7 @@ News recipients are evaluated against current active leases when reading. This i
 
 ## Deliberately disabled integrations
 
-Company instruction excludes live 1C, Bitrix and payment integrations because their contracts are confidential/unavailable. Interfaces and pending outbox handoffs are in [Integrations.cs](src/Cube.Api/Integrations.cs); extension instructions are in [docs/integrations.md](docs/integrations.md).
+Company instruction excludes live 1C, Bitrix and payment integrations because their contracts are confidential/unavailable. Interfaces are in [Gateways.cs](src/Cube.Api/Infrastructure/Integrations/Gateways.cs), and pending outbox handoffs are in [Events.cs](src/Cube.Api/Infrastructure/Messaging/Events.cs); extension instructions are in [docs/integrations.md](docs/integrations.md).
 
 Payment checkout returns **503 `payment_provider_not_configured`**. No client endpoint can mark a payment successful. Requests, readings and statements remain stored locally with `AwaitingConfiguration` handoffs. There is no automatic remote-delivery worker, fake checkout URL or fabricated successful synchronization. Email is also unconfigured: password recovery queues an intent, but does not deliver a message. Administrators can inspect `/api/v1/admin/integrations` and `/api/v1/admin/integration-handoffs`.
 

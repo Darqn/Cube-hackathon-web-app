@@ -1,3 +1,5 @@
+using Cube.Api.Modules.Notifications.Features;
+using Cube.Api.Modules.News;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -116,7 +118,7 @@ public sealed class ApiTests(ApiFixture f) : IClassFixture<ApiFixture>
     [Fact]
     public async Task Scheduled_news_notifications_are_targeted_and_deduplicated()
     {
-        using var scope = f.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<CubeDb>(); await NotificationWorker.Tick(db, TimeProvider.System, default); await NotificationWorker.Tick(db, TimeProvider.System, default);
+        using var scope = f.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<CubeDb>(); await new NotificationScheduler(db, TimeProvider.System).Tick(default); await new NotificationScheduler(db, TimeProvider.System).Tick(default);
         Assert.Equal(1, await db.Notifications.CountAsync(x => x.UserId == f.UserA && x.ResourceId == f.NewsA && x.Kind == "NewsPublished")); Assert.False(await db.Notifications.AnyAsync(x => x.UserId == f.UserB && x.ResourceId == f.NewsA));
     }
 
@@ -134,9 +136,9 @@ public sealed class ApiTests(ApiFixture f) : IClassFixture<ApiFixture>
     {
         using var scope = f.Services.CreateScope(); var db = scope.ServiceProvider.GetRequiredService<CubeDb>(); var time = new DateTimeOffset(2031, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var news = new News { Title = "scheduled boundary", Summary = "test", Body = "test", TenantIds = [f.TenantA], PublishAt = time.AddHours(1), ExpiresAt = time.AddHours(2) }; db.Add(news); await db.SaveChangesAsync();
-        Assert.False(await NewsEndpoints.VisibleForTenant(f.TenantA, db, new FixedClock(time)).AnyAsync(x => x.Id == news.Id));
-        Assert.True(await NewsEndpoints.VisibleForTenant(f.TenantA, db, new FixedClock(time.AddMinutes(90))).AnyAsync(x => x.Id == news.Id));
-        Assert.False(await NewsEndpoints.VisibleForTenant(f.TenantA, db, new FixedClock(time.AddHours(2))).AnyAsync(x => x.Id == news.Id));
+        Assert.False(await NewsAudience.ForTenant(f.TenantA, db, new FixedClock(time)).AnyAsync(x => x.Id == news.Id));
+        Assert.True(await NewsAudience.ForTenant(f.TenantA, db, new FixedClock(time.AddMinutes(90))).AnyAsync(x => x.Id == news.Id));
+        Assert.False(await NewsAudience.ForTenant(f.TenantA, db, new FixedClock(time.AddHours(2))).AnyAsync(x => x.Id == news.Id));
     }
     [Fact]
     public async Task Quarantined_uploads_are_not_downloadable()

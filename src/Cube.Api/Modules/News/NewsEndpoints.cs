@@ -1,30 +1,22 @@
+using Cube.Api.Modules.News;
 using Microsoft.EntityFrameworkCore;
 namespace Cube.Api;
 
 public static class NewsEndpoints
 {
     public record Input(string Title, string Summary, string Body, string Category, string Importance, DateTimeOffset? PublishAt, DateTimeOffset? ExpiresAt, bool AllTenants, Guid[] TenantIds, Guid[] PremisesIds, string? Building, string? Section, int? Floor, bool RequiresAcknowledgement) : IApiRequest;
-    public static IQueryable<News> Visible(Access a, CubeDb db, TimeProvider clock) => VisibleForTenant(a.TenantId, db, clock);
-    public static IQueryable<News> VisibleForTenant(Guid tenant, CubeDb db, TimeProvider clock)
-    {
-        var now = clock.GetUtcNow(); var today = DateOnly.FromDateTime(now.UtcDateTime);
-        var occupied = from l in db.Leases join p in db.Premises on l.PremisesId equals p.Id where l.TenantId == tenant && l.Status == "Active" && l.StartsOn <= today && l.EndsOn >= today select p;
-        // Live targeting: access follows current active leases, not a stale client-supplied location.
-        return db.News.Where(n => !n.Archived && n.PublishAt != null && n.PublishAt <= now && (n.ExpiresAt == null || n.ExpiresAt > now) && (n.AllTenants || n.TenantIds.Contains(tenant) || occupied.Any(p => n.PremisesIds.Contains(p.Id) || ((n.Building != null || n.Section != null || n.Floor != null) && (n.Building == null || n.Building == p.Building) && (n.Section == null || n.Section == p.Section) && (n.Floor == null || n.Floor == p.Floor)))));
-    }
-    public static object Dto(News n) => new { n.Id, n.Title, n.Summary, n.Body, n.Category, n.Importance, n.PublishAt, n.ExpiresAt, n.RequiresAcknowledgement };
     public static void MapNews(this WebApplication app)
     {
         var g = app.MapGroup("/api/v1").AddEndpointFilter<InputValidationFilter>().RequireAuthorization().WithTags("News");
         g.MapGet("/news", async (Access a, CubeDb db, TimeProvider clock, string? category, bool? unreadOnly, int? page, int? size, CancellationToken ct) =>
         {
-            var q = Visible(a, db, clock).Where(x => category == null || x.Category == category);
+            var q = NewsAudience.ForTenant(a.TenantId, db, clock).Where(x => category == null || x.Category == category);
             if (unreadOnly == true) q = q.Where(n => !db.Receipts.Any(r => r.NewsId == n.Id && r.UserId == a.UserId && r.ReadAt != null));
             var items = await q.OrderByDescending(x => x.Importance == "Urgent").ThenByDescending(x => x.Importance == "Important").ThenByDescending(x => x.PublishAt).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct);
             var ids = items.Select(x => x.Id).ToArray(); var receipts = await db.Receipts.Where(x => x.UserId == a.UserId && x.TenantId == a.TenantId && ids.Contains(x.NewsId)).ToListAsync(ct);
-            return Results.Ok(new { Total = await q.CountAsync(ct), Items = items.Select(n => new { News = Dto(n), ReadAt = receipts.SingleOrDefault(r => r.NewsId == n.Id)?.ReadAt, AcknowledgedAt = receipts.SingleOrDefault(r => r.NewsId == n.Id)?.AcknowledgedAt }) });
+            return Results.Ok(new { Total = await q.CountAsync(ct), Items = items.Select(n => new { News = NewsResponses.Dto(n), ReadAt = receipts.SingleOrDefault(r => r.NewsId == n.Id)?.ReadAt, AcknowledgedAt = receipts.SingleOrDefault(r => r.NewsId == n.Id)?.AcknowledgedAt }) });
         });
-        g.MapGet("/news/{id:guid}", async (Guid id, Access a, CubeDb db, TimeProvider clock, CancellationToken ct) => { var n = await Visible(a, db, clock).SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new ApiError(404, "news_not_found"); return Results.Ok(Dto(n)); });
+        g.MapGet("/news/{id:guid}", async (Guid id, Access a, CubeDb db, TimeProvider clock, CancellationToken ct) => { var n = await NewsAudience.ForTenant(a.TenantId, db, clock).SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new ApiError(404, "news_not_found"); return Results.Ok(NewsResponses.Dto(n)); });
         g.MapPost("/news/{id:guid}/read", async (Guid id, Access a, CubeDb db, TimeProvider clock, CancellationToken ct) => { await Receipt(id, false, a, db, clock, ct); return Results.NoContent(); });
         g.MapPost("/news/{id:guid}/acknowledge", async (Guid id, Access a, CubeDb db, TimeProvider clock, CancellationToken ct) => { await Receipt(id, true, a, db, clock, ct); return Results.NoContent(); });
         g.MapGet("/admin/news", async (CubeDb db, int? page, int? size, CancellationToken ct) => await db.News.OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct)).RequireAuthorization("Admin");
@@ -35,7 +27,7 @@ public static class NewsEndpoints
     }
     private static async Task Receipt(Guid id, bool acknowledge, Access a, CubeDb db, TimeProvider clock, CancellationToken ct)
     {
-        var n = await Visible(a, db, clock).SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new ApiError(404, "news_not_found"); Guard.That(!acknowledge || n.RequiresAcknowledgement, "acknowledgement_not_required");
+        var n = await NewsAudience.ForTenant(a.TenantId, db, clock).SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new ApiError(404, "news_not_found"); Guard.That(!acknowledge || n.RequiresAcknowledgement, "acknowledgement_not_required");
         // Atomic upsert makes retries/concurrent read+ack safe, without conflating their meanings.
         var now = clock.GetUtcNow(); DateTimeOffset? ack = acknowledge ? now : null; var user = a.UserId; var tenant = a.TenantId; var rid = Guid.NewGuid();
         await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO \"Receipts\" (\"Id\",\"CreatedAt\",\"TenantId\",\"NewsId\",\"UserId\",\"ReadAt\",\"AcknowledgedAt\") VALUES ({rid},{now},{tenant},{id},{user},{now},{ack}) ON CONFLICT (\"NewsId\",\"UserId\") DO UPDATE SET \"ReadAt\" = COALESCE(\"Receipts\".\"ReadAt\",EXCLUDED.\"ReadAt\"), \"AcknowledgedAt\" = COALESCE(\"Receipts\".\"AcknowledgedAt\",EXCLUDED.\"AcknowledgedAt\")", ct);

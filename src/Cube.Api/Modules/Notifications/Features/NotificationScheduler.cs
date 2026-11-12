@@ -1,26 +1,18 @@
+using Cube.Api.Modules.News;
 using Microsoft.EntityFrameworkCore;
-namespace Cube.Api;
-// Only local in-app reminders. External outbox records remain awaiting configuration.
-public sealed class NotificationWorker(IServiceScopeFactory scopes, TimeProvider clock, ILogger<NotificationWorker> logger) : BackgroundService
+
+namespace Cube.Api.Modules.Notifications.Features;
+
+public sealed class NotificationScheduler(CubeDb db, TimeProvider clock)
 {
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            try { using var scope = scopes.CreateScope(); await Tick(scope.ServiceProvider.GetRequiredService<CubeDb>(), clock, stoppingToken); }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-            catch (Exception ex) { logger.LogError(ex, "In-app notification scheduling failed"); }
-            try { await Task.Delay(TimeSpan.FromMinutes(1), clock, stoppingToken); } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
-        }
-    }
-    public static async Task Tick(CubeDb db, TimeProvider clock, CancellationToken ct)
+    public async Task Tick(CancellationToken ct)
     {
         var now = clock.GetUtcNow(); var today = DateOnly.FromDateTime(now.UtcDateTime);
         var users = await db.Users.AsNoTracking().Where(u => u.TenantId != null && u.Approved && !u.Blocked && db.Tenants.Any(t => t.Id == u.TenantId && !t.Blocked)).ToListAsync(ct);
         foreach (var user in users)
         {
             var tenant = user.TenantId!.Value;
-            if (user.NewsNotifications) foreach (var n in await NewsEndpoints.VisibleForTenant(tenant, db, clock).Select(x => new { x.Id, x.Title }).ToListAsync(ct)) await Add(db, tenant, user.Id, "NewsPublished", n.Id, n.Title, now, ct);
+            if (user.NewsNotifications) foreach (var n in await NewsAudience.ForTenant(tenant, db, clock).Select(x => new { x.Id, x.Title }).ToListAsync(ct)) await Add(db, tenant, user.Id, "NewsPublished", n.Id, n.Title, now, ct);
             if (user.InvoiceReminders) foreach (var i in await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenant && x.Paid < x.Amount && x.DueOn <= today.AddDays(3)).Select(x => new { x.Id, x.DueOn }).ToListAsync(ct)) await Add(db, tenant, user.Id, i.DueOn < today ? "InvoiceOverdue" : "InvoiceDueSoon", i.Id, "Please review your outstanding invoice", now, ct);
             if (user.MeterReminders && today.Day >= 25)
             {

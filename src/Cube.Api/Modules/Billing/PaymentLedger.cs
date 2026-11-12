@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+
 namespace Cube.Api;
 
-public sealed class PaymentRecord : Owned { public Guid InvoiceId { get; set; } public string Provider { get; set; } = ""; public string TransactionId { get; set; } = ""; public decimal Amount { get; set; } public string Currency { get; set; } = ""; }
 // Only a future authenticated provider adapter should call this after verifying settlement.
 // No public endpoint accepts payment success or accounting amounts from a tenant.
 public sealed class PaymentLedger(CubeDb db)
