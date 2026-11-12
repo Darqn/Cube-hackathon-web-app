@@ -103,11 +103,11 @@ function WaitHttp($url) {
     }
     throw "Сервис не готов: $url. Логи сервера: $state"
 }
-function FreePort($port) {
-    if (-not (TestPort $port)) { throw "Порт $port уже занят или недоступен. Остановите использующий его процесс и повторите запуск." }
+function FreePort($port, [string]$address = '127.0.0.1') {
+    if (-not (TestPort $port $address)) { throw "Порт $port уже занят или недоступен. Остановите использующий его процесс и повторите запуск." }
 }
-function TestPort([int]$port) {
-    $listener = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, $port)
+function TestPort([int]$port, [string]$address = '127.0.0.1') {
+    $listener = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Parse($address), $port)
     try {
         $listener.Server.ExclusiveAddressUse = $true
         $listener.Start()
@@ -143,11 +143,110 @@ function ConfigureDatabasePort([string]$runningPort) {
     $env:CUBE_POSTGRES_PORT = [string]$port
 }
 function HashFiles($paths) { return (($paths | ForEach-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_).Hash }) -join '-') }
-function OpenWorker($name, $body) {
+function TestLanIPv4([string]$address) {
+    $parsed = $null
+    if (-not [Net.IPAddress]::TryParse($address, [ref]$parsed)) { return $false }
+    if ($parsed.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork) { return $false }
+    $bytes = $parsed.GetAddressBytes()
+    return ($bytes[0] -eq 10 -or
+        ($bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31) -or
+        ($bytes[0] -eq 192 -and $bytes[1] -eq 168))
+}
+function GetLocalIPv4Addresses {
+    foreach ($adapter in [Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+        if ($adapter.OperationalStatus -ne 'Up') { continue }
+        foreach ($unicast in $adapter.GetIPProperties().UnicastAddresses) {
+            if ($unicast.Address.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork) {
+                $unicast.Address.ToString()
+            }
+        }
+    }
+}
+function GetLanIPv4Addresses {
+    # Prefer connected Wi-Fi/Ethernet with a gateway, excluding loopback/tunnel adapters.
+    foreach ($adapter in [Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+        if ($adapter.OperationalStatus -ne 'Up' -or $adapter.NetworkInterfaceType -notin @('Ethernet','Wireless80211','GigabitEthernet','FastEthernetFx','FastEthernetT')) { continue }
+        $properties = $adapter.GetIPProperties()
+        $gateways = @($properties.GatewayAddresses | Where-Object { $_.Address.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork -and $_.Address.ToString() -ne '0.0.0.0' })
+        if ($gateways.Count -eq 0) { continue }
+        foreach ($unicast in $properties.UnicastAddresses) {
+            $address = $unicast.Address.ToString()
+            if (TestLanIPv4 $address) { $address }
+        }
+    }
+}
+function ConfigureExpoNetwork {
+    $mode = 'lan'
+    if ($env:CUBE_EXPO_HOST) { $mode = $env:CUBE_EXPO_HOST.Trim().ToLowerInvariant() }
+    if ($mode -notin @('lan','localhost')) { throw 'CUBE_EXPO_HOST must be lan or localhost.' }
+    $address = $null
+    if ($mode -eq 'lan') {
+        if ($env:CUBE_LAN_IP) {
+            $address = $env:CUBE_LAN_IP.Trim()
+            if (-not (TestLanIPv4 $address)) { throw 'CUBE_LAN_IP must be a private IPv4 address of this computer, for example 192.168.1.10.' }
+            $address = ([Net.IPAddress]::Parse($address)).ToString()
+            if ($address -notin @(GetLocalIPv4Addresses)) { throw 'CUBE_LAN_IP is not assigned to an active network adapter on this computer.' }
+        } else {
+            $addresses = @(GetLanIPv4Addresses)
+            if ($addresses.Count -gt 0) { $address = $addresses[0] }
+            if ($addresses.Count -gt 1) { Write-Host "Multiple LAN addresses found. Using $address; set CUBE_LAN_IP in .env to select another adapter." }
+        }
+        if (-not $address) {
+            Write-Warning 'No private LAN address found. Using localhost; a physical phone cannot connect. Connect to Wi-Fi/Ethernet or set CUBE_LAN_IP in .env.'
+            $mode = 'localhost'
+        }
+    }
+    $env:CUBE_EXPO_HOST = $mode
+    $env:ASPNETCORE_ENVIRONMENT = 'Development'
+    $env:ASPNETCORE_URLS = 'http://127.0.0.1:5080'
+    $env:EXPO_PUBLIC_API_URL = 'http://127.0.0.1:5080/api/v1'
+    $env:Cors__Origins__0 = 'http://localhost:8081'
+    $env:Cors__Origins__1 = 'http://127.0.0.1:8081'
+    $env:Cors__Origins__2 = $null
+    $env:REACT_NATIVE_PACKAGER_HOSTNAME = '127.0.0.1'
+    if ($mode -eq 'lan') {
+        $env:ASPNETCORE_URLS += ";http://${address}:5080"
+        $env:EXPO_PUBLIC_API_URL = "http://${address}:5080/api/v1"
+        $env:Cors__Origins__2 = "http://${address}:8081"
+        $env:REACT_NATIVE_PACKAGER_HOSTNAME = $address
+        FreePort 5080 $address
+        Write-Host "LAN: $address. Phone and computer must share a network. Allow Node.js/dotnet on private networks in Windows Firewall."
+    }
+    $env:EXPO_PUBLIC_USE_MOCK = 'false'
+    $env:EXPO_OFFLINE = '1'
+}
+function GetFrontendWorkerBody {
+    return @'
+[Console]::Title = 'Cube - Expo QR'
+[Console]::OutputEncoding = New-Object Text.UTF8Encoding
+# Expo hides its QR and keyboard UI when CI is set, even with a real console.
+$env:CI = $null
+Set-Location -LiteralPath 'tenant-app-frontend'
+$expoHostArgument = '--' + $env:CUBE_EXPO_HOST
+Write-Host 'Scan the QR below with a client compatible with Expo SDK 51.'
+Write-Host 'Stop the whole project with q in the main launcher window.'
+npm.cmd run start -- --web --port 8081 --clear $expoHostArgument
+if ($LASTEXITCODE -ne 0) { throw "Expo exited with code $LASTEXITCODE." }
+'@
+}
+function OpenWorker($name, $body, [switch]$Interactive) {
     $file = Join-Path $state "$name.ps1"
     $prefix = '$ErrorActionPreference="Stop"; Set-Location -LiteralPath ' + "'" + $root.Replace("'","''") + "';`r`n"
     [IO.File]::WriteAllText($file, $prefix + $body, (New-Object Text.UTF8Encoding($true)))
-    $worker = Start-Process powershell.exe -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $state "$name.log") -RedirectStandardError (Join-Path $state "$name.error.log") -ArgumentList @('-NoLogo','-NoProfile','-NoExit','-ExecutionPolicy','Bypass','-File',('"'+$file+'"'))
+    $options = @{
+        FilePath = 'powershell.exe'
+        PassThru = $true
+        ArgumentList = @('-NoLogo','-NoProfile','-NoExit','-ExecutionPolicy','Bypass','-File',('"'+$file+'"'))
+    }
+    if ($Interactive) {
+        # Keep real console handles: redirecting or piping stdout makes Expo noninteractive.
+        $options['WindowStyle'] = 'Normal'
+    } else {
+        $options['WindowStyle'] = 'Hidden'
+        $options['RedirectStandardOutput'] = Join-Path $state "$name.log"
+        $options['RedirectStandardError'] = Join-Path $state "$name.error.log"
+    }
+    $worker = Start-Process @options
     $workers.Add($worker)
 }
 try {
@@ -240,9 +339,7 @@ try {
         [Environment]::SetEnvironmentVariable($key,$value,'Process')
     }
     if (-not $env:POSTGRES_PASSWORD -or -not $env:ConnectionStrings__Cube) { throw 'В .env отсутствует POSTGRES_PASSWORD или ConnectionStrings__Cube.' }
-    $env:ASPNETCORE_ENVIRONMENT='Development'; $env:ASPNETCORE_URLS='http://127.0.0.1:5080'
-    $env:Cors__Origins__0='http://localhost:8081'; $env:Cors__Origins__1='http://127.0.0.1:8081'
-    $env:EXPO_PUBLIC_API_URL='http://127.0.0.1:5080/api/v1'; $env:EXPO_PUBLIC_USE_MOCK='false'; $env:EXPO_OFFLINE='1'
+    ConfigureExpoNetwork
     FreePort 5080; FreePort 8081
     $runningDatabase = @(& docker.exe compose ps --status running --quiet db)
     if ($LASTEXITCODE -ne 0) { throw 'Could not inspect the Compose database.' }
@@ -305,10 +402,11 @@ try {
     Run 'dotnet.exe' @('run','--project','src/Cube.Api','--configuration','Release','--no-build','--no-launch-profile','--','--migrate')
     OpenWorker 'backend' 'dotnet.exe run --project src/Cube.Api --configuration Release --no-build --no-launch-profile'
     WaitHttp 'http://127.0.0.1:5080/health/ready'
-    OpenWorker 'frontend' "Set-Location tenant-app-frontend; npm.cmd run web -- --port 8081"
+    OpenWorker 'frontend' (GetFrontendWorkerBody) -Interactive
     WaitHttp 'http://127.0.0.1:8081'
-    Write-Host "Проект запущен. Логи API и Expo: $state"
-    Write-Host 'Веб: http://localhost:8081   API: http://127.0.0.1:5080'
+    Write-Host "Проект запущен. Логи API: $state. QR и вывод Expo: отдельное окно Cube - Expo QR."
+    Write-Host "Веб: http://localhost:8081   API приложения: $env:EXPO_PUBLIC_API_URL"
+    Write-Host 'Если QR скрыт после сообщений Expo, нажмите c в окне Expo. Для телефона используйте ту же Wi-Fi/LAN сеть.'
     Write-Host 'Type q in THIS window and press Enter to stop API, Expo and PostgreSQL. Database data is retained.'
     Write-Host 'Администратор автоматически не создаётся; используйте штатную команду --bootstrap-admin с защищёнными переменными Bootstrap__*.'
     Start-Process 'http://localhost:8081'

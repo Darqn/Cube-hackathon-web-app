@@ -1,6 +1,13 @@
 name: Backend
 on: [push, pull_request]
 jobs:
+  windows-launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Windows PowerShell launcher regression checks
+        shell: powershell
+        run: ./scripts/test-windows-launcher.ps1
   verify:
     runs-on: ubuntu-latest
     services:
