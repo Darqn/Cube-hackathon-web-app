@@ -1,11 +1,12 @@
 using System.Diagnostics;
+using System.Text.Json;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace Cube.Api;
 
 // First version: one prominent INTEGER reading, no multi-tariff or decimal display.
-public sealed class MeterOcr(IConfiguration configuration)
+public sealed class MeterOcr(IConfiguration configuration, IWebHostEnvironment environment)
 {
     public const string Failure = "Не удалось уверенно распознать. Введите показание вручную";
 
@@ -28,6 +29,81 @@ public sealed class MeterOcr(IConfiguration configuration)
             bool jpeg = signature[0] == 0xFF && signature[1] == 0xD8 && signature[2] == 0xFF;
             if (extension == ".png" ? !png : !jpeg) return null;
 
+            // Mechanical odometer registers need individual-wheel preprocessing.
+            // No expected reading is encoded in the OCR helper.
+            var mechanical = await RunMechanical(path, ct);
+            if (mechanical is not null) return mechanical;
+
+            // Other meter photographs keep the existing multi-mode OCR fallback.
+            // Require agreement across independent page segmentation modes.
+            // Optical ambiguity must not become an automatically filled reading.
+            var readings = new List<string>();
+            foreach (var segmentation in new[] { "6", "7", "13" })
+            {
+                var reading = await RunTesseract(path, segmentation, ct);
+                if (reading != null) readings.Add(reading);
+            }
+            return Consensus(readings);
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+
+    private async Task<string?> RunMechanical(string imagePath, CancellationToken ct)
+    {
+        var script = Path.Combine(environment.ContentRootPath, "Ocr", "mechanical_digits.py");
+        if (!File.Exists(script)) return null;
+
+        using var process = new Process();
+        process.StartInfo = new ProcessStartInfo
+        {
+            FileName = configuration["Ocr:PythonPath"] ?? "python",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        process.StartInfo.ArgumentList.Add(script);
+        process.StartInfo.ArgumentList.Add(imagePath);
+        process.StartInfo.ArgumentList.Add("--tesseract");
+        process.StartInfo.ArgumentList.Add(configuration["Ocr:TesseractPath"] ?? "tesseract");
+        try { process.Start(); }
+        catch (System.ComponentModel.Win32Exception) { return null; }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(90));
+        try
+        {
+            var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
+            await process.WaitForExitAsync(timeout.Token);
+            var json = await stdout;
+            _ = await stderr;
+            if (process.ExitCode != 0) return null;
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("value", out var node) || node.ValueKind != JsonValueKind.String)
+                return null;
+            var value = node.GetString();
+            return value is not null && Regex.IsMatch(value, @"^[0-9]{5}$") ? value : null;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            return null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    public static string? Consensus(IEnumerable<string> readings)
+    {
+        var valid = readings.Where(r => Regex.IsMatch(r, @"^[0-9]{1,12}$")).ToList();
+        // At least two modes must agree, and no other accepted mode may disagree.
+        return valid.Count >= 2 && valid.Distinct(StringComparer.Ordinal).Count() == 1
+            ? valid[0] : null;
+    }
+
+    private async Task<string?> RunTesseract(string path, string segmentation, CancellationToken ct)
+    {
             using var process = new Process();
             process.StartInfo = new ProcessStartInfo
             {
@@ -37,7 +113,7 @@ public sealed class MeterOcr(IConfiguration configuration)
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-            foreach (var arg in new[] { path, "stdout", "--psm", "6", "-c", "tessedit_char_whitelist=0123456789", "tsv" })
+            foreach (var arg in new[] { path, "stdout", "--psm", segmentation, "-c", "tessedit_char_whitelist=0123456789", "tsv" })
                 process.StartInfo.ArgumentList.Add(arg);
             try { process.Start(); }
             catch (System.ComponentModel.Win32Exception) { return null; } // not installed
@@ -58,8 +134,6 @@ public sealed class MeterOcr(IConfiguration configuration)
                 return null;
             }
         }
-        finally { if (File.Exists(path)) File.Delete(path); }
-    }
 
     // Read only OCR word rows. Ambiguous or multiple numeric groups are rejected.
     public static string? ParseTsv(string tsv)
