@@ -10,15 +10,18 @@ public sealed class CreateRequestHandler(ICurrentActor actor, TenantScope tenant
 {
     public async Task<Outcome<ServiceRequest>> Handle(Guid categoryId, RequestContent content, CancellationToken ct)
     {
-        if (actor.IsStaff) return Outcome<ServiceRequest>.Reject(Failure.Forbidden("tenant_required"));
+        if (actor.IsStaff)
+            return Outcome<ServiceRequest>.Reject(Failure.Forbidden("tenant_required"));
         var tenantId = tenant.TenantId;
         var category = await db.Categories.FindAsync([categoryId], ct);
-        if (category is null) return Outcome<ServiceRequest>.Reject(Failure.Invalid("invalid_category"));
+        if (category is null)
+            return Outcome<ServiceRequest>.Reject(Failure.Invalid("invalid_category"));
         if (content.PremisesId is Guid premises && !await leases.Contains(tenantId, premises, ct))
             return Outcome<ServiceRequest>.Reject(Failure.NotFound("active_lease_required"));
 
         var result = RequestFactory.Create(content, tenantId, category);
-        if (result.Error is not null) return result;
+        if (result.Error is not null)
+            return result;
         var request = result.Value;
         db.Requests.Add(request);
         Events.Queue(db, "Bitrix", "RequestCreated", request.Id);

@@ -62,6 +62,10 @@ public sealed class DemoSeedTests(ApiFixture fixture) : IClassFixture<ApiFixture
             Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync($"/api/v1/files/{document.FileId}")).StatusCode);
         }
         using var anonymous = fixture.CreateClient();
-        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsJsonAsync("/api/v1/auth/login", new { LoginName = "demo-pending", ApiFixture.Password })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsJsonAsync("/api/v1/auth/login", new
+        {
+            LoginName = "demo-pending",
+            ApiFixture.Password
+        })).StatusCode);
     }
 }

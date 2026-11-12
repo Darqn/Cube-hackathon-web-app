@@ -1,5 +1,5 @@
-using Cube.Api.Modules.Notifications;
 using Cube.Api.Modules.Metering;
+using Cube.Api.Modules.Notifications;
 using Microsoft.EntityFrameworkCore;
 
 namespace Cube.Api;
@@ -11,7 +11,9 @@ public static class StaffDashboardEndpoints
         var g = app.MapGroup("/api/v1/staff").AddEndpointFilter<InputValidationFilter>().RequireAuthorization(p => p.RequireRole("Staff", "Admin")).WithTags("Staff workspace");
         g.MapGet("/dashboard", async (Access a, CubeDb db, MeteringVisibility visibility, StaffNotificationVisibility notices, TimeProvider clock, CancellationToken ct) =>
         {
-            var now = clock.GetUtcNow(); var day = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero); var tomorrow = day.AddDays(1);
+            var now = clock.GetUtcNow();
+            var day = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero);
+            var tomorrow = day.AddDays(1);
             var active = a.Requests.Where(r => r.Status != "Closed" && r.Status != "Rejected" && r.Status != "Completed");
             return Results.Ok(new
             {

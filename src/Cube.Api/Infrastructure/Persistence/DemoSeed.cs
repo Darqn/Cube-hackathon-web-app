@@ -1,5 +1,5 @@
-using Cube.Api.Modules.Requests.Domain;
 using System.Text;
+using Cube.Api.Modules.Requests.Domain;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,11 +11,13 @@ public static class DemoSeed
 
     public static async Task Run(IServiceProvider services, IHostEnvironment environment, IConfiguration config)
     {
-        if (!environment.IsDevelopment()) throw new InvalidOperationException("Demo data requires Development environment.");
+        if (!environment.IsDevelopment())
+            throw new InvalidOperationException("Demo data requires Development environment.");
         var db = services.GetRequiredService<CubeDb>();
         var users = services.GetRequiredService<UserManager<User>>();
         var storage = services.GetRequiredService<PrivateStorage>();
-        if (!storage.AllowDevelopmentFiles) throw new InvalidOperationException("Enable Files__AllowUnscannedDevelopmentUploads for demo documents.");
+        if (!storage.AllowDevelopmentFiles)
+            throw new InvalidOperationException("Enable Files__AllowUnscannedDevelopmentUploads for demo documents.");
         await using var transaction = await db.Database.BeginTransactionAsync();
         // Serialize repeated/concurrent invocations; no existing demo edits are reset.
         await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(734028191)");
@@ -41,9 +43,14 @@ public static class DemoSeed
             async Task<User> AddUser(string login, string role, string name, Guid? tenant = null, bool approved = true)
             {
                 var user = new User { Id = Guid.NewGuid(), UserName = login, Email = login + "@example.test", FullName = name, Role = role, TenantId = tenant, Approved = approved, PhoneNumber = "+7 000 000-00-00" };
-                if (!approved) { user.RequestedOrganization = "ДЕМО · Новая компания"; user.RequestedInn = "9900000031"; }
+                if (!approved)
+                {
+                    user.RequestedOrganization = "ДЕМО · Новая компания";
+                    user.RequestedInn = "9900000031";
+                }
                 var result = await users.CreateAsync(user, password);
-                if (!result.Succeeded) throw new InvalidOperationException($"Demo account {login}: {string.Join(", ", result.Errors.Select(x => x.Code))}");
+                if (!result.Succeeded)
+                    throw new InvalidOperationException($"Demo account {login}: {string.Join(", ", result.Errors.Select(x => x.Code))}");
                 return user;
             }
             var admin = await AddUser("demo-admin", "Admin", "ДЕМО · Администратор");
@@ -53,7 +60,8 @@ public static class DemoSeed
             await AddUser("demo-pending", "Tenant", "ДЕМО · Заявитель", approved: false);
             var categories = await db.Categories.OrderBy(x => x.Code).ToListAsync();
             // Fill unassigned routes only; preserve any existing staff assignments.
-            foreach (var category in categories.Where(x => x.ResponsibleUserId is null)) category.ResponsibleUserId = staff.Id;
+            foreach (var category in categories.Where(x => x.ResponsibleUserId is null))
+                category.ResponsibleUserId = staff.Id;
             for (var t = 0; t < tenants.Length; t++)
             {
                 var tenant = tenants[t];
@@ -66,13 +74,15 @@ public static class DemoSeed
                     var paid = i == 0 ? amount : i == 2 ? amount / 2 : 0;
                     var invoice = new Invoice { TenantId = tenant.Id, ExternalId = $"demo:v1:{t}:{i}", Number = $"DEMO-{t + 1}-{i + 1:000}", Kind = i == 3 ? "Utilities" : "Rent", IssuedOn = today.AddDays(-35 + i * 10), DueOn = i == 1 ? today.AddDays(-7) : today.AddDays(10 + i), Amount = amount, Paid = paid, Purpose = i == 3 ? "ДЕМО · Коммунальные услуги" : "ДЕМО · Арендная плата" };
                     db.Add(invoice);
-                    if (paid > 0) db.Add(new PaymentRecord { TenantId = tenant.Id, InvoiceId = invoice.Id, Provider = "DemoFixture", TransactionId = invoice.ExternalId, Amount = paid, Currency = "RUB", CreatedAt = now.AddDays(-3) });
+                    if (paid > 0)
+                        db.Add(new PaymentRecord { TenantId = tenant.Id, InvoiceId = invoice.Id, Provider = "DemoFixture", TransactionId = invoice.ExternalId, Amount = paid, Currency = "RUB", CreatedAt = now.AddDays(-3) });
                 }
                 foreach (var type in new[] { "Electricity", "Water" })
                 {
                     var meter = new Meter { TenantId = tenant.Id, PremisesId = premises.Id, Type = type, SerialNumber = $"DEMO-{t + 1}-{type}", Unit = type == "Water" ? "m³" : "kWh", LastValue = 1300 };
                     db.Add(meter);
-                    for (var r = 0; r < 3; r++) db.Add(new Reading { TenantId = tenant.Id, MeterId = meter.Id, PreviousValue = 1000 + r * 100, Value = 1100 + r * 100, Status = r == 2 ? "Submitted" : "Accepted", CreatedAt = now.AddMonths(r - 2) });
+                    for (var r = 0; r < 3; r++)
+                        db.Add(new Reading { TenantId = tenant.Id, MeterId = meter.Id, PreviousValue = 1000 + r * 100, Value = 1100 + r * 100, Status = r == 2 ? "Submitted" : "Accepted", CreatedAt = now.AddMonths(r - 2) });
                 }
                 var subjects = new[] { "Заменить лампу в переговорной", "Проверить отопление офиса", "Согласовать перепланировку", "Уточнить начисления по аренде", "Выдать копию договора", "Обсудить продление аренды", "Повторная заявка на ремонт" };
                 var states = RequestRules.RequestStates;
@@ -81,15 +91,20 @@ public static class DemoSeed
                 {
                     var request = new ServiceRequest { TenantId = tenant.Id, PremisesId = premises.Id, CategoryId = categories.Single(x => x.Code == categoryCodes[i]).Id, AssigneeId = staff.Id, Subject = "ДЕМО · " + subjects[i], Description = "Демонстрационная заявка: можно просмотреть историю, написать сообщение и изменить статус.", Status = states[i], ContactName = tenant.ContactName, Phone = tenant.Phone, Email = tenant.Email, CreatedAt = now.AddDays(-8 + i), DueAt = now.AddDays(i - 2) };
                     db.Add(request);
-                    if (i == 0) db.Add(new Notification { TenantId = tenant.Id, UserId = staff.Id, ResourceId = request.Id, Kind = "StaffRequestAssigned", Text = "ДЕМО · Вам назначена новая заявка" });
+                    if (i == 0)
+                        db.Add(new Notification { TenantId = tenant.Id, UserId = staff.Id, ResourceId = request.Id, Kind = "StaffRequestAssigned", Text = "ДЕМО · Вам назначена новая заявка" });
                     string[] path = states[i] switch
                     {
-                        "New" => ["New"], "Accepted" => ["New", "Accepted"], "InProgress" => ["New", "Accepted", "InProgress"],
+                        "New" => ["New"],
+                        "Accepted" => ["New", "Accepted"],
+                        "InProgress" => ["New", "Accepted", "InProgress"],
                         "Clarification" => ["New", "Accepted", "InProgress", "Clarification"],
                         "Completed" => ["New", "Accepted", "InProgress", "Completed"],
-                        "Closed" => ["New", "Accepted", "InProgress", "Completed", "Closed"], _ => ["New", "Rejected"]
+                        "Closed" => ["New", "Accepted", "InProgress", "Completed", "Closed"],
+                        _ => ["New", "Rejected"]
                     };
-                    for (var e = 0; e < path.Length; e++) db.Add(new RequestEvent { TenantId = tenant.Id, RequestId = request.Id, ActorId = staff.Id, FromStatus = e == 0 ? "" : path[e - 1], ToStatus = path[e], Reason = "ДЕМО · История обработки", CreatedAt = request.CreatedAt.AddMinutes(e * 30) });
+                    for (var e = 0; e < path.Length; e++)
+                        db.Add(new RequestEvent { TenantId = tenant.Id, RequestId = request.Id, ActorId = staff.Id, FromStatus = e == 0 ? "" : path[e - 1], ToStatus = path[e], Reason = "ДЕМО · История обработки", CreatedAt = request.CreatedAt.AddMinutes(e * 30) });
                     db.Add(new RequestMessage { TenantId = tenant.Id, RequestId = request.Id, AuthorId = staff.Id, Text = "Здравствуйте! Заявку получили, специалист свяжется с вами.", CreatedAt = request.CreatedAt.AddMinutes(5) });
                     db.Add(new RequestMessage { TenantId = tenant.Id, RequestId = request.Id, AuthorId = staff.Id, Text = "ДЕМО · Внутренняя заметка: согласовать время визита.", Internal = true, CreatedAt = request.CreatedAt.AddMinutes(10) });
                 }
@@ -123,7 +138,8 @@ public static class DemoSeed
         }
         catch
         {
-            foreach (var path in writtenFiles) File.Delete(path);
+            foreach (var path in writtenFiles)
+                File.Delete(path);
             throw;
         }
     }
@@ -134,10 +150,15 @@ public static class DemoSeed
         string[] objects = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>", "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", $"<< /Length {stream.Length} >>\nstream\n{stream}endstream"];
         var pdf = new StringBuilder("%PDF-1.4\n");
         var offsets = new List<int>();
-        for (var i = 0; i < objects.Length; i++) { offsets.Add(pdf.Length); pdf.Append($"{i + 1} 0 obj\n{objects[i]}\nendobj\n"); }
+        for (var i = 0; i < objects.Length; i++)
+        {
+            offsets.Add(pdf.Length);
+            pdf.Append($"{i + 1} 0 obj\n{objects[i]}\nendobj\n");
+        }
         var xref = pdf.Length;
         pdf.Append($"xref\n0 6\n0000000000 65535 f \n");
-        foreach (var offset in offsets) pdf.Append($"{offset:0000000000} 00000 n \n");
+        foreach (var offset in offsets)
+            pdf.Append($"{offset:0000000000} 00000 n \n");
         pdf.Append($"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
         return Encoding.ASCII.GetBytes(pdf.ToString());
     }

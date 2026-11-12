@@ -3,12 +3,12 @@ using Cube.Api.Api.Authentication;
 using Cube.Api.Api.Middleware;
 using Cube.Api.Common.Identity;
 using Cube.Api.Infrastructure;
-using Cube.Api.Modules.Identity;
-using Cube.Api.Modules.Requests;
-using Cube.Api.Modules.Metering;
-using Cube.Api.Modules.Property;
-using Cube.Api.Modules.Notifications;
 using Cube.Api.Infrastructure.Persistence;
+using Cube.Api.Modules.Identity;
+using Cube.Api.Modules.Metering;
+using Cube.Api.Modules.Notifications;
+using Cube.Api.Modules.Property;
+using Cube.Api.Modules.Requests;
 using Cube.Api.Workflows;
 using Microsoft.AspNetCore.RateLimiting;
 
@@ -31,7 +31,8 @@ public static class CubeHostingExtensions
         builder.Services.AddScoped<RentalInquiryWorkflow>();
         builder.Services.AddScoped<Access>();
         builder.Services.AddScoped<PaymentLedger>();
-        builder.Services.AddOpenApi(); builder.Services.AddProblemDetails();
+        builder.Services.AddOpenApi();
+        builder.Services.AddProblemDetails();
         builder.Services.AddRateLimiter(o =>
         {
             o.RejectionStatusCode = 429;
@@ -42,7 +43,8 @@ public static class CubeHostingExtensions
         builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o => o.MultipartBodyLengthLimit = 21 * 1024 * 1024);
         var origins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [];
         builder.Services.AddCors(o => o.AddDefaultPolicy(p => { if (origins.Length > 0) p.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod(); }));
-        if (builder.Configuration.GetValue<bool>("Notifications:WorkerEnabled")) builder.Services.AddHostedService<NotificationWorker>();
+        if (builder.Configuration.GetValue<bool>("Notifications:WorkerEnabled"))
+            builder.Services.AddHostedService<NotificationWorker>();
         return builder;
     }
 
@@ -59,7 +61,8 @@ public static class CubeHostingExtensions
         app.UseRateLimiter();
         app.UseAuthentication();
         app.UseAuthorization();
-        if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing")) app.MapOpenApi();
+        if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
+            app.MapOpenApi();
         return app;
     }
 }

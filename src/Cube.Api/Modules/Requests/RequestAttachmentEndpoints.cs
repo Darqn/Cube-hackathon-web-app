@@ -10,6 +10,10 @@ public static class RequestAttachmentEndpoints
         var group = app.MapGroup("/api/v1").AddEndpointFilter<InputValidationFilter>().RequireAuthorization().WithTags("Files and documents");
         group.MapPost("/requests/{id:guid}/attachments", async (Guid id, AttachmentInput input, AddRequestAttachmentHandler handler, HttpContext context, CancellationToken ct) =>
             (await handler.Handle(id, input.FileId, ct)).ToHttpResult(context, attachment =>
-                Results.Created($"/api/v1/requests/{id}", new { attachment.Id, attachment.FileId })));
+                Results.Created($"/api/v1/requests/{id}", new
+                {
+                    attachment.Id,
+                    attachment.FileId
+                })));
     }
 }

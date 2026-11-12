@@ -45,10 +45,12 @@ public sealed class ArchitectureTests
         void Visit(string module, HashSet<string> path)
         {
             Assert.True(path.Add(module), "Module dependency cycle: " + string.Join(" -> ", path.Append(module)));
-            foreach (var dependency in graph.GetValueOrDefault(module, [])) Visit(dependency, path);
+            foreach (var dependency in graph.GetValueOrDefault(module, []))
+                Visit(dependency, path);
             path.Remove(module);
         }
-        foreach (var module in graph.Keys) Visit(module, []);
+        foreach (var module in graph.Keys)
+            Visit(module, []);
     }
 
     private static string? Module(Type type) => type.Namespace?.StartsWith("Cube.Api.Modules.", StringComparison.Ordinal) == true
@@ -67,25 +69,35 @@ public sealed class ArchitectureTests
         var found = new HashSet<Type>();
         void Add(Type? dependency)
         {
-            if (dependency is null || !found.Add(dependency)) return;
-            if (dependency.HasElementType) Add(dependency.GetElementType());
-            foreach (var argument in dependency.GetGenericArguments()) Add(argument);
+            if (dependency is null || !found.Add(dependency))
+                return;
+            if (dependency.HasElementType)
+                Add(dependency.GetElementType());
+            foreach (var argument in dependency.GetGenericArguments())
+                Add(argument);
         }
         Add(type.BaseType);
-        foreach (var implemented in type.GetInterfaces()) Add(implemented);
-        foreach (var field in type.GetFields(flags)) Add(field.FieldType);
+        foreach (var implemented in type.GetInterfaces())
+            Add(implemented);
+        foreach (var field in type.GetFields(flags))
+            Add(field.FieldType);
         foreach (var method in type.GetMethods(flags).Cast<MethodBase>().Concat(type.GetConstructors(flags)))
         {
-            if (method is MethodInfo info) Add(info.ReturnType);
-            foreach (var parameter in method.GetParameters()) Add(parameter.ParameterType);
+            if (method is MethodInfo info)
+                Add(info.ReturnType);
+            foreach (var parameter in method.GetParameters())
+                Add(parameter.ParameterType);
             var body = method.GetMethodBody();
-            if (body is null) continue;
-            foreach (var local in body.LocalVariables) Add(local.LocalType);
+            if (body is null)
+                continue;
+            foreach (var local in body.LocalVariables)
+                Add(local.LocalType);
             var il = body.GetILAsByteArray()!;
             for (var offset = 0; offset < il.Length;)
             {
                 ushort value = il[offset++];
-                if (value == 0xfe) value = (ushort)(0xfe00 | il[offset++]);
+                if (value == 0xfe)
+                    value = (ushort)(0xfe00 | il[offset++]);
                 var opcode = Opcodes[value];
                 if (opcode.OperandType is OperandType.InlineField or OperandType.InlineMethod or OperandType.InlineType or OperandType.InlineTok)
                 {

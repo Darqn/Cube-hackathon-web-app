@@ -1,7 +1,7 @@
+using Cube.Api.Contracts;
 using Cube.Api.Modules.Metering;
 using Cube.Api.Modules.Metering.Features;
 using Microsoft.EntityFrameworkCore;
-using Cube.Api.Contracts;
 
 namespace Cube.Api;
 
@@ -42,7 +42,9 @@ public static class MeteringEndpoints
             var r = await visibility.Readings().AsNoTracking().SingleOrDefaultAsync(r => r.Id == id, ct) ?? throw new ApiError(404, "reading_not_found");
             Guard.That(r.PhotoId.HasValue, "photo_not_available", 404);
             var file = await db.Files.SingleOrDefaultAsync(f => f.Id == r.PhotoId && f.TenantId == r.TenantId && f.State == "Ready", ct) ?? throw new ApiError(404, "photo_not_available");
-            var path = storage.PathFor(file.Key); Guard.That(File.Exists(path), "photo_not_available", 404); return Results.File(path, file.ContentType, file.Name, enableRangeProcessing: true);
+            var path = storage.PathFor(file.Key);
+            Guard.That(File.Exists(path), "photo_not_available", 404);
+            return Results.File(path, file.ContentType, file.Name, enableRangeProcessing: true);
         });
     }
 

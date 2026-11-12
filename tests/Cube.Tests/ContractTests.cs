@@ -19,7 +19,7 @@ public sealed class ContractTests(ApiFixture fixture) : IClassFixture<ApiFixture
         var actual = JsonNode.Parse(await client.GetStringAsync("/openapi/v1.json"))!.AsObject();
         actual.Remove("servers"); // The host/port is supplied by the deployment, not the API contract.
         var expected = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Baselines", "openapi.json")));
-        Assert.True(JsonNode.DeepEquals(expected, actual), "OpenAPI changed:\n" + string.Join("\n", Differences(expected, actual, "$" ).Take(12)));
+        Assert.True(JsonNode.DeepEquals(expected, actual), "OpenAPI changed:\n" + string.Join("\n", Differences(expected, actual, "$").Take(12)));
     }
 
     [Fact]
@@ -49,9 +49,13 @@ public sealed class ContractTests(ApiFixture fixture) : IClassFixture<ApiFixture
     {
         var input = new Dictionary<string, object?>
         {
-            ["Login"] = "contract-applicant", ["Password"] = ApiFixture.Password,
-            ["Email"] = "contract@example.test", ["FullName"] = "Applicant",
-            ["Organization"] = "Organization", ["Inn"] = "7707083893", ["Phone"] = "1"
+            ["Login"] = "contract-applicant",
+            ["Password"] = ApiFixture.Password,
+            ["Email"] = "contract@example.test",
+            ["FullName"] = "Applicant",
+            ["Organization"] = "Organization",
+            ["Inn"] = "7707083893",
+            ["Phone"] = "1"
         };
         input[field] = null;
         using var client = fixture.CreateClient();
@@ -64,8 +68,12 @@ public sealed class ContractTests(ApiFixture fixture) : IClassFixture<ApiFixture
         using var tenant = await fixture.As("tenant-a");
         await AssertProblem(await tenant.PostAsJsonAsync("/api/v1/requests", new
         {
-            CategoryId = Guid.NewGuid(), Subject = new string('x', 10001), Description = "Description",
-            ContactName = "Contact", Phone = "1", Email = "a@example.test"
+            CategoryId = Guid.NewGuid(),
+            Subject = new string('x', 10001),
+            Description = "Description",
+            ContactName = "Contact",
+            Phone = "1",
+            Email = "a@example.test"
         }), HttpStatusCode.BadRequest, "field_too_long");
     }
 
@@ -75,8 +83,14 @@ public sealed class ContractTests(ApiFixture fixture) : IClassFixture<ApiFixture
         using var admin = await fixture.As("admin");
         await AssertProblem(await admin.PostAsJsonAsync("/api/v1/admin/news", new
         {
-            Title = "Title", Summary = "Summary", Body = "Body", Category = "General", Importance = "Normal",
-            AllTenants = false, TenantIds = Enumerable.Repeat(Guid.NewGuid(), 1001).ToArray(), PremisesIds = Array.Empty<Guid>()
+            Title = "Title",
+            Summary = "Summary",
+            Body = "Body",
+            Category = "General",
+            Importance = "Normal",
+            AllTenants = false,
+            TenantIds = Enumerable.Repeat(Guid.NewGuid(), 1001).ToArray(),
+            PremisesIds = Array.Empty<Guid>()
         }), HttpStatusCode.BadRequest, "collection_too_large");
     }
 
@@ -86,8 +100,13 @@ public sealed class ContractTests(ApiFixture fixture) : IClassFixture<ApiFixture
         using var tenant = await fixture.As("tenant-a");
         var response = await tenant.PostAsJsonAsync("/api/v1/requests", new
         {
-            CategoryId = fixture.Category, PremisesId = fixture.PremisesA, Subject = " Contract issue ",
-            Description = "Description", ContactName = "Contact", Phone = "1", Email = "a@example.test"
+            CategoryId = fixture.Category,
+            PremisesId = fixture.PremisesA,
+            Subject = " Contract issue ",
+            Description = "Description",
+            ContactName = "Contact",
+            Phone = "1",
+            Email = "a@example.test"
         });
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -113,8 +132,12 @@ public sealed class ContractTests(ApiFixture fixture) : IClassFixture<ApiFixture
         var subject = "invalid-" + Guid.NewGuid();
         await AssertProblem(await tenant.PostAsJsonAsync("/api/v1/requests", new
         {
-            CategoryId = fixture.Category, Subject = subject, Description = "Description",
-            ContactName = "Contact", Phone = "1", Email = "invalid email"
+            CategoryId = fixture.Category,
+            Subject = subject,
+            Description = "Description",
+            ContactName = "Contact",
+            Phone = "1",
+            Email = "invalid email"
         }), HttpStatusCode.BadRequest, "invalid_email");
         using var scope = fixture.Services.CreateScope();
         Assert.False(await scope.ServiceProvider.GetRequiredService<CubeDb>().Requests.AnyAsync(x => x.Subject == subject));
@@ -149,18 +172,22 @@ public sealed class ContractTests(ApiFixture fixture) : IClassFixture<ApiFixture
 
     private static IEnumerable<string> Differences(JsonNode? expected, JsonNode? actual, string path)
     {
-        if (JsonNode.DeepEquals(expected, actual)) yield break;
+        if (JsonNode.DeepEquals(expected, actual))
+            yield break;
         if (expected is JsonObject left && actual is JsonObject right)
         {
             foreach (var key in left.Select(x => x.Key).Union(right.Select(x => x.Key)))
-                foreach (var difference in Differences(left[key], right[key], path + "/" + key)) yield return difference;
+                foreach (var difference in Differences(left[key], right[key], path + "/" + key))
+                    yield return difference;
         }
         else if (expected is JsonArray leftArray && actual is JsonArray rightArray && leftArray.Count == rightArray.Count)
         {
             for (var index = 0; index < leftArray.Count; index++)
-                foreach (var difference in Differences(leftArray[index], rightArray[index], path + "/" + index)) yield return difference;
+                foreach (var difference in Differences(leftArray[index], rightArray[index], path + "/" + index))
+                    yield return difference;
         }
-        else yield return $"{path}: {expected?.ToJsonString()} -> {actual?.ToJsonString()}";
+        else
+            yield return $"{path}: {expected?.ToJsonString()} -> {actual?.ToJsonString()}";
     }
 
     private static async Task AssertProblem(HttpResponseMessage response, HttpStatusCode status, string code)

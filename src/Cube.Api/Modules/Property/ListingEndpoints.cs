@@ -1,7 +1,7 @@
+using Cube.Api.Modules.Billing.Domain;
+using Cube.Api.Workflows;
 using Microsoft.EntityFrameworkCore;
 using static Cube.Api.TenantEndpoints;
-using Cube.Api.Workflows;
-using Cube.Api.Modules.Billing.Domain;
 
 namespace Cube.Api;
 
@@ -13,7 +13,11 @@ public static class ListingsTenantEndpoints
         g.MapGet("/listings", async (string? type, decimal? minArea, decimal? maxArea, decimal? minPrice, decimal? maxPrice, string? building, int? floor, int? page, int? size, CubeDb db, CancellationToken ct) =>
         {
             var q = from l in db.Listings join p in db.Premises on l.PremisesId equals p.Id where l.Published && !l.Archived && (p.Status == "Available" || p.Status == "Reserved") && (type == null || p.Type == type) && (minArea == null || p.Area >= minArea) && (maxArea == null || p.Area <= maxArea) && (minPrice == null || p.MonthlyRent >= minPrice) && (maxPrice == null || p.MonthlyRent <= maxPrice) && (building == null || p.Building == building) && (floor == null || p.Floor == floor) orderby l.CreatedAt descending, l.Id select new { Listing = l, Premises = p };
-            return Results.Ok(new { Total = await q.CountAsync(ct), Items = await q.Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct) });
+            return Results.Ok(new
+            {
+                Total = await q.CountAsync(ct),
+                Items = await q.Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct)
+            });
         });
         g.MapGet("/listings/{id:guid}", async (Guid id, CubeDb db, CancellationToken ct) => await (from l in db.Listings join p in db.Premises on l.PremisesId equals p.Id where l.Id == id && l.Published && !l.Archived && (p.Status == "Available" || p.Status == "Reserved") select new { Listing = l, Premises = p }).SingleOrDefaultAsync(ct) is { } item ? Results.Ok(item) : Results.NotFound());
         g.MapPost("/listings/{id:guid}/inquiries", async (Guid id, InquiryInput i, RentalInquiryWorkflow workflow, HttpContext context, CancellationToken ct) =>

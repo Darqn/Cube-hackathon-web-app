@@ -22,9 +22,15 @@ public static class RequestFactory
 
         return Outcome<ServiceRequest>.Success(new ServiceRequest
         {
-            TenantId = tenant, CategoryId = category.Id, AssigneeId = category.ResponsibleUserId,
-            PremisesId = input.PremisesId, Subject = input.Subject.Trim(), Description = input.Description.Trim(),
-            ContactName = input.ContactName.Trim(), Phone = input.Phone.Trim(), Email = input.Email
+            TenantId = tenant,
+            CategoryId = category.Id,
+            AssigneeId = category.ResponsibleUserId,
+            PremisesId = input.PremisesId,
+            Subject = input.Subject.Trim(),
+            Description = input.Description.Trim(),
+            ContactName = input.ContactName.Trim(),
+            Phone = input.Phone.Trim(),
+            Email = input.Email
         });
     }
 }

@@ -14,7 +14,10 @@ namespace Cube.Tests;
 public sealed class ScenarioTests(ApiFixture fixture) : IClassFixture<ApiFixture>
 {
     private sealed record Actor(Guid? UserId, Guid? TenantId, bool IsAdmin = false, bool IsStaff = false) : ICurrentActor;
-    private sealed class Clock(DateTimeOffset now) : TimeProvider { public override DateTimeOffset GetUtcNow() => now; }
+    private sealed class Clock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
 
     [Fact]
     public async Task Create_handler_runs_without_http_and_commits_request_outbox_and_actor_audit()

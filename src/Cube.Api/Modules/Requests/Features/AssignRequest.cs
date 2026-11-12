@@ -8,8 +8,10 @@ public sealed class AssignRequestHandler(CubeDb db)
     public async Task<Outcome<ServiceRequest>> Handle(Guid id, Guid? assigneeId, DateTimeOffset? dueAt, uint version, CancellationToken ct)
     {
         var request = await db.Requests.FindAsync([id], ct);
-        if (request is null) return Outcome<ServiceRequest>.Reject(Failure.NotFound("request_not_found"));
-        if (request.Version != version) return Outcome<ServiceRequest>.Reject(Failure.Conflict("stale_version"));
+        if (request is null)
+            return Outcome<ServiceRequest>.Reject(Failure.NotFound("request_not_found"));
+        if (request.Version != version)
+            return Outcome<ServiceRequest>.Reject(Failure.Conflict("stale_version"));
         if (assigneeId is Guid user && !await db.Users.AnyAsync(x => x.Id == user && (x.Role == "Staff" || x.Role == "Admin") && !x.Blocked && x.Approved, ct))
             return Outcome<ServiceRequest>.Reject(Failure.Invalid("invalid_assignee"));
 

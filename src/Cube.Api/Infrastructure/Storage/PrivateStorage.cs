@@ -12,7 +12,11 @@ public sealed class PrivateStorage(IConfiguration config, IWebHostEnvironment en
     public void Delete(string key) => File.Delete(PathFor(key));
     public string Root { get; } = Path.GetFullPath(config["Files:Root"] ?? Path.Combine(environment.ContentRootPath, ".data", "files"));
     public bool AllowDevelopmentFiles => environment.IsDevelopment() && config.GetValue<bool>("Files:AllowUnscannedDevelopmentUploads");
-    public string PathFor(string key) { Guard.That(key.Length == 32 && key.All(Uri.IsHexDigit), "invalid_storage_key"); return Path.Combine(Root, key); }
+    public string PathFor(string key)
+    {
+        Guard.That(key.Length == 32 && key.All(Uri.IsHexDigit), "invalid_storage_key");
+        return Path.Combine(Root, key);
+    }
     public static string Validate(byte[] bytes, string filename)
     {
         Guard.That(bytes.Length > 0 && bytes.Length <= 20 * 1024 * 1024, "invalid_file_size", 413);

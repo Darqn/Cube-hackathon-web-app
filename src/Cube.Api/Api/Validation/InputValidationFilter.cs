@@ -11,14 +11,18 @@ public sealed class InputValidationFilter : IEndpointFilter
     {
         foreach (var argument in context.Arguments)
         {
-            if (argument is not IApiRequest) continue;
+            if (argument is not IApiRequest)
+                continue;
 
             foreach (var rule in Rules.GetOrAdd(argument.GetType(), Describe))
             {
                 var value = rule.Property.GetValue(argument);
-                if (rule.Required) Guard.That(value is not null, rule.MissingCode);
-                if (value is string text) Guard.That(text.Length <= 10000, "field_too_long");
-                if (value is Array array) Guard.That(array.Length <= 1000, "collection_too_large");
+                if (rule.Required)
+                    Guard.That(value is not null, rule.MissingCode);
+                if (value is string text)
+                    Guard.That(text.Length <= 10000, "field_too_long");
+                if (value is Array array)
+                    Guard.That(array.Length <= 1000, "collection_too_large");
             }
         }
 

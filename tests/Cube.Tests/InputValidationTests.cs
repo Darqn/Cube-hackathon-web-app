@@ -20,7 +20,12 @@ public sealed class InputValidationTests
         var context = new DefaultEndpointFilterInvocationContext(new DefaultHttpContext(), input);
         var exception = await Assert.ThrowsAsync<ApiError>(async () =>
             await new InputValidationFilter().InvokeAsync(context, _ => ValueTask.FromResult<object?>(true)));
-        Assert.Equal(invalid switch { "missing" => "missing_name", "string" => "field_too_long", _ => "collection_too_large" }, exception.Message);
+        Assert.Equal(invalid switch
+        {
+            "missing" => "missing_name",
+            "string" => "field_too_long",
+            _ => "collection_too_large"
+        }, exception.Message);
     }
 
     [Fact]

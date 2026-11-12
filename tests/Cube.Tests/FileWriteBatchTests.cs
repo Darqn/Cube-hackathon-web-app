@@ -10,18 +10,26 @@ public sealed class FileWriteBatchTests
     private sealed class Store : IPrivateFileStore
     {
         public Dictionary<string, byte[]> Contents { get; } = [];
-        public string? FailOn { get; init; }
-        public bool FailCleanup { get; init; }
+        public string? FailOn
+        {
+            get; init;
+        }
+        public bool FailCleanup
+        {
+            get; init;
+        }
         public Task WriteAsync(string key, byte[] bytes, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
             Contents[key] = bytes;
-            if (key == FailOn) throw new IOException("partial write");
+            if (key == FailOn)
+                throw new IOException("partial write");
             return Task.CompletedTask;
         }
         public void Delete(string key)
         {
-            if (FailCleanup) throw new IOException("cleanup failure");
+            if (FailCleanup)
+                throw new IOException("cleanup failure");
             Contents.Remove(key);
         }
     }

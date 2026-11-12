@@ -1,6 +1,6 @@
 using Cube.Api;
-using Cube.Api.Modules.Requests.Domain;
 using Cube.Api.Modules.Metering.Domain;
+using Cube.Api.Modules.Requests.Domain;
 using Xunit;
 
 namespace Cube.Tests;

@@ -16,7 +16,8 @@ public static class RequestReplyEndpoint
     private static async Task<IResult> Reply(Guid id, HttpRequest request, ReplyToRequestHandler handler, HttpContext context, CancellationToken ct)
     {
         var open = await handler.FindOpenRequest(id, ct);
-        if (open.Error is not null) return open.ToHttpResult(context, Results.Ok);
+        if (open.Error is not null)
+            return open.ToHttpResult(context, Results.Ok);
         Guard.That(request.HasFormContentType, "multipart_required");
         var form = await request.ReadFormAsync(ct);
         Guard.That(bool.TryParse(form["internal"], out var internalNote), "invalid_message_visibility");
@@ -24,7 +25,8 @@ public static class RequestReplyEndpoint
         Guard.That(text.Length <= 10000 && (text.Length > 0 || form.Files.Count > 0), "message_required");
         Guard.That(form.Files.Count <= 5 && form.Files.Sum(f => f.Length) <= 20 * 1024 * 1024, "invalid_file_size", 413);
         var uploads = new List<ValidatedUpload>();
-        foreach (var upload in form.Files) uploads.Add(await UploadedFileReader.ReadAsync(upload, ct));
+        foreach (var upload in form.Files)
+            uploads.Add(await UploadedFileReader.ReadAsync(upload, ct));
         var result = await handler.Handle(open.Value, text, internalNote, uploads, ct);
         return result.ToHttpResult(context, reply => Results.Created($"/api/v1/requests/{id}", new { reply.Id, reply.CreatedAt, reply.PendingFiles }));
     }

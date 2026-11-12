@@ -13,18 +13,22 @@ public sealed class RentalInquiryWorkflow(ICurrentActor actor, TenantScope tenan
 {
     public async Task<Outcome<RentalInquiryResult>> Handle(Guid id, string contact, string phone, string email, string message, CancellationToken ct)
     {
-        if (actor.IsStaff) return Outcome<RentalInquiryResult>.Reject(Failure.Forbidden("tenant_required"));
+        if (actor.IsStaff)
+            return Outcome<RentalInquiryResult>.Reject(Failure.Forbidden("tenant_required"));
         var existing = await db.Inquiries.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.ListingId == id, ct);
-        if (existing is not null) return Outcome<RentalInquiryResult>.Success(new(existing, false));
+        if (existing is not null)
+            return Outcome<RentalInquiryResult>.Success(new(existing, false));
         var listing = await db.Listings.SingleOrDefaultAsync(x => x.Id == id && x.Published && !x.Archived, ct);
-        if (listing is null) return Outcome<RentalInquiryResult>.Reject(Failure.NotFound("listing_not_found"));
+        if (listing is null)
+            return Outcome<RentalInquiryResult>.Reject(Failure.NotFound("listing_not_found"));
         if (!await db.Premises.AnyAsync(x => x.Id == listing.PremisesId && x.Status == "Available", ct))
             return Outcome<RentalInquiryResult>.Reject(Failure.Conflict("listing_unavailable"));
         var category = await db.Categories.SingleAsync(x => x.Code == "rent", ct);
         if (string.IsNullOrWhiteSpace(message) || message.Length > 10000)
             return Outcome<RentalInquiryResult>.Reject(Failure.Invalid("invalid_message"));
         var created = RequestFactory.Create(new(null, $"Rental inquiry: {listing.Title}", message.Trim(), contact, phone, email), tenant.TenantId, category);
-        if (created.Error is { } error) return Outcome<RentalInquiryResult>.Reject(error);
+        if (created.Error is { } error)
+            return Outcome<RentalInquiryResult>.Reject(error);
 
         var request = created.Value;
         db.Requests.Add(request);

@@ -1,7 +1,7 @@
+using Cube.Api.Modules.Identity.Domain;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using static Cube.Api.AdminEndpoints;
-using Microsoft.AspNetCore.Identity;
-using Cube.Api.Modules.Identity.Domain;
 
 namespace Cube.Api;
 

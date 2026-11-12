@@ -1,5 +1,5 @@
-using Cube.Api.Modules.Requests.Features;
 using Cube.Api.Modules.Requests.Domain;
+using Cube.Api.Modules.Requests.Features;
 using Microsoft.EntityFrameworkCore;
 namespace Cube.Api;
 
@@ -16,9 +16,19 @@ public static class RequestEndpoints
         g.MapGet("/requests", async (Access a, string? status, Guid? premisesId, Guid? tenantId, Guid? assigneeId, int? page, int? size, CubeDb db, CancellationToken ct) =>
         {
             var q = a.Requests.AsNoTracking();
-            if (status is not null) q = q.Where(x => x.Status == status); if (premisesId is not null) q = q.Where(x => x.PremisesId == premisesId);
-            if (tenantId is not null) q = q.Where(x => x.TenantId == tenantId); if (assigneeId is not null) q = q.Where(x => x.AssigneeId == assigneeId);
-            return Results.Ok(new { Total = await q.CountAsync(ct), Items = await q.OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).Select(r => new { r.Id, r.TenantId, r.PremisesId, r.CategoryId, r.AssigneeId, r.Subject, r.Description, r.ContactName, r.Phone, r.Email, r.Status, r.DueAt, r.Version, r.CreatedAt, TenantName = db.Tenants.Where(t => t.Id == r.TenantId).Select(t => t.Name).FirstOrDefault(), PremisesName = db.Premises.Where(p => p.Id == r.PremisesId).Select(p => p.Name).FirstOrDefault(), AssigneeName = db.Users.Where(u => u.Id == r.AssigneeId).Select(u => u.FullName).FirstOrDefault() }).ToListAsync(ct) });
+            if (status is not null)
+                q = q.Where(x => x.Status == status);
+            if (premisesId is not null)
+                q = q.Where(x => x.PremisesId == premisesId);
+            if (tenantId is not null)
+                q = q.Where(x => x.TenantId == tenantId);
+            if (assigneeId is not null)
+                q = q.Where(x => x.AssigneeId == assigneeId);
+            return Results.Ok(new
+            {
+                Total = await q.CountAsync(ct),
+                Items = await q.OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).Select(r => new { r.Id, r.TenantId, r.PremisesId, r.CategoryId, r.AssigneeId, r.Subject, r.Description, r.ContactName, r.Phone, r.Email, r.Status, r.DueAt, r.Version, r.CreatedAt, TenantName = db.Tenants.Where(t => t.Id == r.TenantId).Select(t => t.Name).FirstOrDefault(), PremisesName = db.Premises.Where(p => p.Id == r.PremisesId).Select(p => p.Name).FirstOrDefault(), AssigneeName = db.Users.Where(u => u.Id == r.AssigneeId).Select(u => u.FullName).FirstOrDefault() }).ToListAsync(ct)
+            });
         });
         g.MapPost("/requests", async (Create input, CreateRequestHandler handler, HttpContext context, CancellationToken ct) =>
         {
@@ -28,7 +38,13 @@ public static class RequestEndpoints
         g.MapGet("/requests/{id:guid}", async (Guid id, Access a, CubeDb db, CancellationToken ct) =>
         {
             var r = await a.Request(id, ct);
-            return Results.Ok(new { Request = r, Messages = await db.Messages.Where(x => x.RequestId == id && x.TenantId == r.TenantId && (a.Staff || !x.Internal)).OrderBy(x => x.CreatedAt).Select(x => new { x.Id, x.AuthorId, AuthorName = db.Users.Where(u => u.Id == x.AuthorId).Select(u => u.FullName).FirstOrDefault(), x.Text, x.Internal, x.CreatedAt }).ToListAsync(ct), History = await db.RequestEvents.Where(x => x.RequestId == id && x.TenantId == r.TenantId).OrderBy(x => x.CreatedAt).ToListAsync(ct), Attachments = await db.Attachments.Where(x => x.RequestId == id && x.TenantId == r.TenantId && (a.Staff || x.MessageId == null || db.Messages.Any(m => m.Id == x.MessageId && m.TenantId == r.TenantId && !m.Internal))).Select(x => new { x.Id, x.FileId, x.MessageId, Name = db.Files.Where(f => f.Id == x.FileId).Select(f => f.Name).FirstOrDefault(), State = db.Files.Where(f => f.Id == x.FileId).Select(f => f.State).FirstOrDefault() }).ToListAsync(ct) });
+            return Results.Ok(new
+            {
+                Request = r,
+                Messages = await db.Messages.Where(x => x.RequestId == id && x.TenantId == r.TenantId && (a.Staff || !x.Internal)).OrderBy(x => x.CreatedAt).Select(x => new { x.Id, x.AuthorId, AuthorName = db.Users.Where(u => u.Id == x.AuthorId).Select(u => u.FullName).FirstOrDefault(), x.Text, x.Internal, x.CreatedAt }).ToListAsync(ct),
+                History = await db.RequestEvents.Where(x => x.RequestId == id && x.TenantId == r.TenantId).OrderBy(x => x.CreatedAt).ToListAsync(ct),
+                Attachments = await db.Attachments.Where(x => x.RequestId == id && x.TenantId == r.TenantId && (a.Staff || x.MessageId == null || db.Messages.Any(m => m.Id == x.MessageId && m.TenantId == r.TenantId && !m.Internal))).Select(x => new { x.Id, x.FileId, x.MessageId, Name = db.Files.Where(f => f.Id == x.FileId).Select(f => f.Name).FirstOrDefault(), State = db.Files.Where(f => f.Id == x.FileId).Select(f => f.State).FirstOrDefault() }).ToListAsync(ct)
+            });
         });
         g.MapPost("/requests/{id:guid}/messages", async (Guid id, MessageInput input, AddRequestMessageHandler handler, HttpContext context, CancellationToken ct) =>
         {

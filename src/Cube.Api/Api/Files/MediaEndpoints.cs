@@ -18,7 +18,12 @@ public static class MediaEndpoints
     }
     private static async Task ListingVisible(Guid id, Access a, CubeDb db, CancellationToken ct) => Guard.That(await (from l in db.Listings join p in db.Premises on l.PremisesId equals p.Id where l.Id == id && (a.Admin || (l.Published && !l.Archived && (p.Status == "Available" || p.Status == "Reserved"))) select l.Id).AnyAsync(ct), "listing_not_found", 404);
     private static async Task NewsVisible(Guid id, Access a, CubeDb db, TimeProvider clock, CancellationToken ct) => Guard.That(a.Admin ? await db.News.AnyAsync(x => x.Id == id, ct) : await NewsAudience.ForTenant(a.TenantId, db, clock).AnyAsync(x => x.Id == id, ct), "news_not_found", 404);
-    private static IResult Download(PublishedAsset asset, PrivateStorage storage) { var path = storage.PathFor(asset.Key); Guard.That(File.Exists(path), "asset_not_found", 404); return Results.File(path, asset.ContentType, asset.Name, enableRangeProcessing: true); }
+    private static IResult Download(PublishedAsset asset, PrivateStorage storage)
+    {
+        var path = storage.PathFor(asset.Key);
+        Guard.That(File.Exists(path), "asset_not_found", 404);
+        return Results.File(path, asset.ContentType, asset.Name, enableRangeProcessing: true);
+    }
     private static async Task<IResult> Upload(Guid? listingId, Guid? newsId, HttpRequest request, CubeDb db, PrivateStorage storage, FileWriteBatch files, CancellationToken ct)
     {
         Guard.That(request.HasFormContentType, "multipart_required");
@@ -29,6 +34,11 @@ public static class MediaEndpoints
         var asset = new PublishedAsset { ListingId = listingId, NewsId = newsId, Key = Guid.NewGuid().ToString("N"), Name = upload.Name, ContentType = upload.ContentType, State = storage.AllowDevelopmentFiles ? "Ready" : "Quarantined" };
         db.Add(asset);
         await files.SaveAsync([new(asset.Key, upload.Bytes)], async token => { await db.SaveChangesAsync(token); }, ct);
-        return Results.Created(listingId is Guid l ? $"/api/v1/listings/{l}/photos/{asset.Id}" : $"/api/v1/news/{newsId}/attachments/{asset.Id}", new { asset.Id, asset.Name, asset.State });
+        return Results.Created(listingId is Guid l ? $"/api/v1/listings/{l}/photos/{asset.Id}" : $"/api/v1/news/{newsId}/attachments/{asset.Id}", new
+        {
+            asset.Id,
+            asset.Name,
+            asset.State
+        });
     }
 }

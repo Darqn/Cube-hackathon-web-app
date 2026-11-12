@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
 using Cube.Api.Common.Identity;
+using Microsoft.EntityFrameworkCore;
 
 namespace Cube.Api.Api.Middleware;
 

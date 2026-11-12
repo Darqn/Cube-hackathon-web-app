@@ -24,7 +24,10 @@ public sealed class FileWriteBatch(IPrivateFileStore files, ILogger<FileWriteBat
         {
             foreach (var key in attempted)
             {
-                try { files.Delete(key); }
+                try
+                {
+                    files.Delete(key);
+                }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
                     // Preserve the original failure; never log the filename or uploaded content.
