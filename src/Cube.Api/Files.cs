@@ -38,10 +38,10 @@ public sealed class PrivateStorage(IConfiguration config, IWebHostEnvironment en
 }
 public static class FileEndpoints
 {
-    public record DocumentInput(Guid TenantId, Guid FileId, string Title, string Kind, string Number, DateOnly DocumentDate, Guid? LeaseId, Guid? PremisesId);
-    public record ArchiveInput(bool Archived);
-    public record StatementInput(Guid FileId, string Title, Guid? LeaseId, Guid? PremisesId);
-    public record AttachmentInput(Guid FileId);
+    public record DocumentInput(Guid TenantId, Guid FileId, string Title, string Kind, string Number, DateOnly DocumentDate, Guid? LeaseId, Guid? PremisesId) : IApiRequest;
+    public record ArchiveInput(bool Archived) : IApiRequest;
+    public record StatementInput(Guid FileId, string Title, Guid? LeaseId, Guid? PremisesId) : IApiRequest;
+    public record AttachmentInput(Guid FileId) : IApiRequest;
     public static void MapFiles(this WebApplication app)
     {
         var g = app.MapGroup("/api/v1").AddEndpointFilter<InputValidationFilter>().RequireAuthorization().WithTags("Files and documents");

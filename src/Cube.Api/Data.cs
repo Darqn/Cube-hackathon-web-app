@@ -1,8 +1,9 @@
+using Cube.Api.Common.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 namespace Cube.Api;
 
-public sealed class CubeDb(DbContextOptions<CubeDb> options, IHttpContextAccessor http) : IdentityDbContext<User, Microsoft.AspNetCore.Identity.IdentityRole<Guid>, Guid>(options)
+public sealed class CubeDb(DbContextOptions<CubeDb> options, ICurrentActor actor) : IdentityDbContext<User, Microsoft.AspNetCore.Identity.IdentityRole<Guid>, Guid>(options)
 {
     public DbSet<Tenant> Tenants => Set<Tenant>(); public DbSet<Session> Sessions => Set<Session>();
     public DbSet<Premises> Premises => Set<Premises>(); public DbSet<Lease> Leases => Set<Lease>();
@@ -85,8 +86,7 @@ public sealed class CubeDb(DbContextOptions<CubeDb> options, IHttpContextAccesso
     }
     public override Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
-        var actor = http.HttpContext?.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if (Guid.TryParse(actor, out var actorId))
+        if (actor.UserId is Guid actorId)
         {
             var entries = ChangeTracker.Entries<Entity>().Where(x => x.Entity is not Cube.Api.Audit and not Session && x.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToList();
             foreach (var entry in entries) Audit.Add(new Audit { ActorId = actorId, Action = $"{entry.State}:{entry.Entity.GetType().Name}", ResourceId = entry.Entity.Id });

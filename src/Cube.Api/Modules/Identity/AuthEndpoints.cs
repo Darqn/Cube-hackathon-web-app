@@ -1,70 +1,17 @@
-using System.Security.Claims;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Encodings.Web;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
+
 namespace Cube.Api;
 
-public sealed class ApiError(int status, string code) : Exception(code) { public int Status { get; } = status; }
-public static class Guard
-{
-    public static void That(bool condition, string code, int status = 400) { if (!condition) throw new ApiError(status, code); }
-    public static string Text(string? value, string name, int max = 200) { That(!string.IsNullOrWhiteSpace(value) && value.Length <= max, $"invalid_{name}"); return value!.Trim(); }
-    public static string Email(string value) { That(System.Net.Mail.MailAddress.TryCreate(value, out var mail) && mail.Address == value && value.Length <= 254, "invalid_email"); return value; }
-    public static int Page(int? page) => Math.Clamp(page ?? 1, 1, 100000);
-    public static int Size(int? size) => Math.Clamp(size ?? 25, 1, 100);
-}
-public static class Tokens
-{
-    public static string New() => Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-    public static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
-}
-public sealed class SessionHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, CubeDb db, TimeProvider clock)
-    : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
-{
-    protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
-    {
-        var header = Request.Headers.Authorization.ToString();
-        if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return AuthenticateResult.NoResult();
-        var token = header[7..]; if (token.Length != 64) return AuthenticateResult.Fail("Invalid session");
-        var hash = Tokens.Hash(token);
-        var session = await db.Sessions.AsNoTracking().SingleOrDefaultAsync(x => x.TokenHash == hash && x.ExpiresAt > clock.GetUtcNow(), Context.RequestAborted);
-        if (session is null) return AuthenticateResult.Fail("Invalid session");
-        var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == session.UserId, Context.RequestAborted);
-        if (user is null || !user.Approved || user.Blocked || user.SecurityStamp != session.SecurityStamp) return AuthenticateResult.Fail("Invalid session");
-        if (user.TenantId is Guid tid && !await db.Tenants.AnyAsync(x => x.Id == tid && !x.Blocked, Context.RequestAborted)) return AuthenticateResult.Fail("Invalid session");
-        var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, user.Id.ToString()), new(ClaimTypes.Role, user.Role), new(ClaimTypes.Name, user.UserName ?? "") };
-        if (user.TenantId is Guid t) claims.Add(new("tenant", t.ToString()));
-        return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name)), Scheme.Name));
-    }
-}
-public sealed class Access(IHttpContextAccessor http, CubeDb db)
-{
-    public Guid UserId => Guid.Parse(http.HttpContext!.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-    public bool Admin => http.HttpContext!.User.IsInRole("Admin");
-    public bool Staff => Admin || http.HttpContext!.User.IsInRole("Staff");
-    public Guid TenantId => Guid.TryParse(http.HttpContext!.User.FindFirstValue("tenant"), out var t) ? t : throw new ApiError(403, "tenant_context_required");
-    public IQueryable<T> Own<T>() where T : Owned => db.Set<T>().Where(x => x.TenantId == TenantId);
-    public IQueryable<ServiceRequest> Requests => Admin ? db.Requests : Staff ? db.Requests.Where(x => x.AssigneeId == UserId) : Own<ServiceRequest>();
-    public async Task<ServiceRequest> Request(Guid id, CancellationToken ct) => await Requests.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new ApiError(404, "request_not_found");
-    public async Task ActivePremises(Guid tenant, Guid premises, CancellationToken ct)
-    {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        Guard.That(await db.Leases.AnyAsync(x => x.TenantId == tenant && x.PremisesId == premises && x.Status == "Active" && x.StartsOn <= today && x.EndsOn >= today, ct), "active_lease_required", 404);
-    }
-}
 public static class AuthEndpoints
 {
-    public record Register(string Login, string Password, string Email, string FullName, string Organization, string Inn, string Phone);
-    public record Login(string LoginName, string Password);
-    public record ChangePassword(string CurrentPassword, string NewPassword);
-    public record ProfileInput(string FullName, string Phone);
-    public record Preferences(bool InvoiceReminders, bool MeterReminders, bool NewsNotifications);
-    public record ResetRequest(string Email);
-    public record ResetPassword(string Email, string Token, string NewPassword);
+    public record Register(string Login, string Password, string Email, string FullName, string Organization, string Inn, string Phone) : IApiRequest;
+    public record Login(string LoginName, string Password) : IApiRequest;
+    public record ChangePassword(string CurrentPassword, string NewPassword) : IApiRequest;
+    public record ProfileInput(string FullName, string Phone) : IApiRequest;
+    public record Preferences(bool InvoiceReminders, bool MeterReminders, bool NewsNotifications) : IApiRequest;
+    public record ResetRequest(string Email) : IApiRequest;
+    public record ResetPassword(string Email, string Token, string NewPassword) : IApiRequest;
     public static void MapAuth(this WebApplication app)
     {
         var g = app.MapGroup("/api/v1/auth").AddEndpointFilter<InputValidationFilter>().WithTags("Authentication").RequireRateLimiting("auth");

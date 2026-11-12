@@ -3,12 +3,12 @@ namespace Cube.Api;
 
 public static class RequestEndpoints
 {
-    public record Create(Guid CategoryId, Guid? PremisesId, string Subject, string Description, string ContactName, string Phone, string Email);
-    public record MessageInput(string Text, bool Internal = false);
-    public record Transition(string Status, string Reason, uint Version);
-    public record Assignment(Guid? AssigneeId, DateTimeOffset? DueAt, uint Version);
-    public record ReadingInput(decimal Value, Guid? PhotoId);
-    public record ReviewInput(string Status, string Reason);
+    public record Create(Guid CategoryId, Guid? PremisesId, string Subject, string Description, string ContactName, string Phone, string Email) : IApiRequest;
+    public record MessageInput(string Text, bool Internal = false) : IApiRequest;
+    public record Transition(string Status, string Reason, uint Version) : IApiRequest;
+    public record Assignment(Guid? AssigneeId, DateTimeOffset? DueAt, uint Version) : IApiRequest;
+    public record ReadingInput(decimal Value, Guid? PhotoId) : IApiRequest;
+    public record ReviewInput(string Status, string Reason) : IApiRequest;
     public static void MapRequests(this WebApplication app)
     {
         var g = app.MapGroup("/api/v1").AddEndpointFilter<InputValidationFilter>().RequireAuthorization().WithTags("Requests and readings");

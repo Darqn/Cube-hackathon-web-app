@@ -12,3 +12,12 @@
 - Риски: `GET /api/v1/documents` для Staff без tenant сейчас возвращает **500**, поскольку EF оборачивает `ApiError` при извлечении query parameters. Это поведение зафиксировано и не исправляется незаметно в рефакторинге; перевод в 403 требует отдельного согласования. Frontend и production deployment этим этапом не проверялись.
 
 Результаты команд сохраняются вне исходников в `/workspace/.cube-tools/refactor-results`.
+
+## 2. HTTP, validation и текущий пользователь
+
+- Обнаружено: scope DbContext может возникнуть до установки authenticated principal; кеширование пользователя в конструкторе привело бы к потере audit.
+- Решение: scoped `ICurrentActor` с HTTP-адаптером, читающим актуальные claims; явный marker `IApiRequest` для входных контрактов вместо namespace/`<Clone>$`; выделенный middleware и модульная регистрация Identity/Infrastructure.
+- Изменено: Program теперь только собирает host и маршруты; CLI maintenance, middleware, validation, auth handler/tokens и contracts разнесены. CubeDb больше не принимает IHttpContextAccessor. Метаданные validation кешируются по типу, без изменения ограничений и кодов ошибок.
+- Преимущество: persistence и сценариям доступен текущий пользователь без HTTP-зависимости; DTO можно переносить между namespaces без потери validation.
+- Проверено: полный Release suite — **67 passed, 0 failed, 0 skipped**, без compiler warnings; OpenAPI и migration snapshot совпадают. Отдельные тесты проверяют actor до/после authentication, audit без HTTP и validation контракта вне Cube.Api.
+- Риски: прежняя классификация DbUpdateException и поведение Response.HasStarted намеренно сохранены. Интерфейс текущего пользователя не заменяет проверки доступа к конкретным ресурсам.

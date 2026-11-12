@@ -3,7 +3,7 @@ namespace Cube.Api;
 
 public static class NewsEndpoints
 {
-    public record Input(string Title, string Summary, string Body, string Category, string Importance, DateTimeOffset? PublishAt, DateTimeOffset? ExpiresAt, bool AllTenants, Guid[] TenantIds, Guid[] PremisesIds, string? Building, string? Section, int? Floor, bool RequiresAcknowledgement);
+    public record Input(string Title, string Summary, string Body, string Category, string Importance, DateTimeOffset? PublishAt, DateTimeOffset? ExpiresAt, bool AllTenants, Guid[] TenantIds, Guid[] PremisesIds, string? Building, string? Section, int? Floor, bool RequiresAcknowledgement) : IApiRequest;
     public static IQueryable<News> Visible(Access a, CubeDb db, TimeProvider clock) => VisibleForTenant(a.TenantId, db, clock);
     public static IQueryable<News> VisibleForTenant(Guid tenant, CubeDb db, TimeProvider clock)
     {
