@@ -2,13 +2,17 @@
 
 ASP.NET Core 10, EF Core/Npgsql and PostgreSQL 17 backend for the commercial-property tenant application. The original Russian brief and five mockups remain in the repository. The [implementation plan](docs/backend-plan.md) was written before application code.
 
+The backend is organized by business capability inside one API project. See the [current architecture](docs/architecture.md), [architecture audit](docs/architecture-audit.md) and [refactoring validation record](docs/refactoring-progress.md) for ownership, dependency rules and compatibility checks.
+
 ## Run locally
 
 ### Windows
 
 Run `start-cube.bat` from the repository root (or pass the checkout directory as its first argument). The launcher checks Node.js/npm, the pinned .NET SDK, Docker Desktop/Compose and project dependencies. Every installation or dependency download requires console confirmation; declining stops startup. Docker Desktop requires Linux containers and may need WSL2 setup and a reboot after its first installation.
 
-The launcher preserves an existing `.env`, starts PostgreSQL, builds the backend, applies migrations and starts API/Expo in the background. Logs are in `.data/windows-launcher` (`backend.log`, `frontend.log` and their `.error.log` files). Keep the launcher window open. Type `q` and press Enter in that window to stop the API and Expo process trees and any PostgreSQL container started by this launch, retaining its data. An already-running project database is reused and left running. Startup failures also clean up processes started by the launcher. If the launcher window is forcibly closed, stop its server processes with Task Manager and run `docker compose stop db` from the repository root. No administrator is created automatically. On the first run or after dependency changes, `npm ci` recreates `node_modules` using the lockfile and available cache. The Windows launcher has not yet been executed on Windows CI.
+The launcher preserves an existing `.env`, starts PostgreSQL, builds the backend, applies migrations and starts the API in the background. Expo opens in a separate visible **Cube - Expo QR** console with its QR code, logs and keyboard shortcuts. API logs remain in `.data/windows-launcher/backend.log` and `backend.error.log`; Expo stdout/stderr stay in its console so that terminal interactivity is preserved. Existing `frontend.log` files from older launcher versions are not updated. Keep the main launcher window open. Type `q` and press Enter in that window to stop the API and Expo process trees and any PostgreSQL container started by this launch, retaining its data. An already-running project database is reused and left running. Startup failures also clean up processes started by the launcher. If the launcher window is forcibly closed, stop its server processes with Task Manager and run `docker compose stop db` from the repository root. No administrator is created automatically. On the first run or after dependency changes, `npm ci` recreates `node_modules` using the lockfile and available cache. Windows PowerShell helper regression checks run in CI; full Docker Desktop startup and physical-device acceptance are separate checks.
+
+By default, the launcher uses LAN mode: it selects a private IPv4 address from a connected Wi-Fi/Ethernet adapter, advertises that address in the Expo QR and uses it for the app's API URL. The Development API binds to loopback plus that specific LAN address; PostgreSQL remains loopback-only. The phone and computer must share a reachable network. See [Expo QR and phone connection](docs/windows-expo-qr.md) for adapter selection, localhost mode, client compatibility and tunnel alternatives.
 
 For a local API connection, the launcher uses the PostgreSQL port in `ConnectionStrings__Cube` (5432 if omitted) for Compose as well. If that port is unavailable, it selects a free port in 5433–5532 and adjusts the API connection for this run without rewriting `.env`. Set `CUBE_POSTGRES_PORT` in `.env` to require a specific port; an unavailable explicit port fails startup. Direct `docker compose` commands also honor `CUBE_POSTGRES_PORT`, defaulting to 5432. Run launcher regression checks with `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-windows-launcher.ps1`.
 
@@ -23,7 +27,7 @@ scripts/dev.sh run
 
 `setup` generates an ignored, private `.env` if absent, starts PostgreSQL, restores locked dependencies, builds Release, applies migrations and idempotently seeds the six request categories. Existing `.env` files are preserved. The bootstrap command refuses to run if an administrator exists. Passwords require at least 12 characters plus upper/lowercase letters, a digit and a symbol. Unset bootstrap variables after use.
 
-The API binds to loopback port 5080 in development. Readiness: `GET /health/ready`; development OpenAPI: `GET /openapi/v1.json`. Use that document for complete HTTP routes and body schemas. No Swagger UI dependency is required.
+The shell development helper binds the API to loopback port 5080. The Windows launcher additionally binds the selected private LAN address in LAN mode. Readiness: `GET /health/ready`; development OpenAPI: `GET /openapi/v1.json`. Use that document for complete HTTP routes and body schemas. No Swagger UI dependency is required.
 
 ```bash
 scripts/dev.sh test
@@ -32,6 +36,8 @@ scripts/dev.sh test
 Tests create and drop uniquely named PostgreSQL databases. Use an isolated development/CI database role with `CREATEDB`; never point `CUBE_TEST_DATABASE` at production. Tests apply actual migrations and use the real Npgsql provider. Unit tests and HTTP/database tests are in `tests/Cube.Tests`.
 
 ## Authentication and first workflow
+
+The combined branch review is described in [branch integration](docs/branch-integration.md). Optional electricity meter OCR requires a local Tesseract executable; see [installation, limits and checks](docs/meter-ocr.md). Recognition suggests a value and never submits a reading automatically.
 
 For a populated local demonstration with admin, staff and tenant accounts, run `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/seed-demo.ps1`. See [demo data and walkthrough](docs/demo-data.md); generated credentials are saved in ignored `.data/demo-accounts.json`.
 
@@ -58,7 +64,7 @@ News recipients are evaluated against current active leases when reading. This i
 
 ## Deliberately disabled integrations
 
-Company instruction excludes live 1C, Bitrix and payment integrations because their contracts are confidential/unavailable. Interfaces and pending outbox handoffs are in [Integrations.cs](src/Cube.Api/Integrations.cs); extension instructions are in [docs/integrations.md](docs/integrations.md).
+Company instruction excludes live 1C, Bitrix and payment integrations because their contracts are confidential/unavailable. Interfaces are in [Gateways.cs](src/Cube.Api/Infrastructure/Integrations/Gateways.cs), and pending outbox handoffs are in [Events.cs](src/Cube.Api/Infrastructure/Messaging/Events.cs); extension instructions are in [docs/integrations.md](docs/integrations.md).
 
 Payment checkout returns **503 `payment_provider_not_configured`**. No client endpoint can mark a payment successful. Requests, readings and statements remain stored locally with `AwaitingConfiguration` handoffs. There is no automatic remote-delivery worker, fake checkout URL or fabricated successful synchronization. Email is also unconfigured: password recovery queues an intent, but does not deliver a message. Administrators can inspect `/api/v1/admin/integrations` and `/api/v1/admin/integration-handoffs`.
 

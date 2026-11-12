@@ -1,6 +1,13 @@
 name: Backend
 on: [push, pull_request]
 jobs:
+  windows-launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Windows PowerShell launcher regression checks
+        shell: powershell
+        run: ./scripts/test-windows-launcher.ps1
   verify:
     runs-on: ubuntu-latest
     services:
@@ -21,6 +28,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      - name: Install native OCR engine for real recognition tests
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
       - run: dotnet restore Cube.sln --locked-mode
       - run: dotnet build Cube.sln --configuration Release --no-restore
       - run: dotnet test Cube.sln --configuration Release --no-build --logger "trx;LogFileName=backend.trx"

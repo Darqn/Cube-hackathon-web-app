@@ -35,6 +35,31 @@ test('meter submission selects actual meter ID, sends JSON value/photoId', async
  fake((url, init) => { if (url.endsWith('/meters')) return [{ id: 'meter', premisesId: 'premise', type: 'Water', active: true }]; assert.ok(url.endsWith('/meters/meter/readings')); assert.deepEqual(JSON.parse(init.body as string), { value: 42, photoId: null }); return {}; });
  await backend.sendMeter({ premiseId: 'premise', meterType: 'water', value: 42, date: '2026-01-01' });
 });
+test('meter recognition sends an authorized multipart image and preserves the suggestion or fallback', async () => {
+ const previousDocument = globalThis.document;
+ globalThis.document = {} as Document;
+ setTokens('ocr-session');
+ try {
+  let fallback = false;
+  fake((url, init) => {
+   if (url === 'blob:meter-photo') return new Response(new Uint8Array([137, 80, 78, 71]), { headers: { 'Content-Type': 'image/png' } });
+   assert.ok(url.endsWith('/meters/recognize'));
+   assert.equal(init.method, 'POST');
+   assert.equal((init.headers as Record<string,string>).Authorization, 'Bearer ocr-session');
+   assert.equal((init.headers as Record<string,string>)['Content-Type'], undefined);
+   const file = (init.body as FormData).get('file') as File;
+   assert.equal(file.name, 'meter.png'); assert.equal(file.type, 'image/png'); assert.equal(file.size, 4);
+   return fallback ? { value: null, message: 'Введите показание вручную' } : { value: '12480', message: null };
+  });
+  const file = { uri: 'blob:meter-photo', name: 'meter.png', mimeType: 'image/png' };
+  assert.deepEqual(await backend.recognizeMeter(file), { value: '12480', message: null });
+  fallback = true;
+  assert.deepEqual(await backend.recognizeMeter(file), { value: null, message: 'Введите показание вручную' });
+ } finally {
+  if (previousDocument === undefined) Reflect.deleteProperty(globalThis, 'document');
+  else globalThis.document = previousDocument;
+ }
+});
 test('401 clears session without refresh/retrying writes; ProblemDetails translated', async () => {
  let calls = 0; let cleared = false; setTokens('token'); setSessionHandlers({ onUnauthorized: () => { cleared = true; } });
  fake((_url, init) => { calls++; assert.equal((init.headers as Record<string,string>).Authorization, 'Bearer token'); return new Response(JSON.stringify({ code: 'invalid_credentials' }), { status: 401 }); });
