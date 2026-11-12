@@ -16,6 +16,6 @@ public sealed class PaymentLedger(CubeDb db)
         if (existing is not null) { Guard.That(existing.InvoiceId == invoiceId && existing.Amount == amount && existing.Currency == currency, "payment_replay_mismatch", 409); return existing.Id; }
         Guard.That(invoice.Currency == currency && amount <= invoice.Amount - invoice.Paid, "payment_amount_or_currency_mismatch", 409);
         var payment = new PaymentRecord { TenantId = invoice.TenantId, InvoiceId = invoiceId, Provider = provider, TransactionId = transactionId, Amount = amount, Currency = currency }; db.Add(payment); invoice.Paid += amount;
-        Events.Queue(db, "Accounting", "PaymentSettled", payment.Id); Events.Notify(db, invoice.TenantId, "PaymentSettled", invoiceId, "A payment has been recorded"); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return payment.Id;
+        Events.Queue(db, "Accounting", "PaymentSettled", payment.Id); await Events.NotifyAsync(db, invoice.TenantId, "PaymentSettled", invoiceId, "A payment has been recorded", ct); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return payment.Id;
     }
 }

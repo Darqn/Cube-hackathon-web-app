@@ -9,11 +9,15 @@ app.UseCubeHttp();
 app.MapHealth();
 app.MapAuth();
 app.MapStaff();
+app.MapRequestReplies();
+app.MapStaffMetering();
 app.MapAdmin();
 app.MapRequests();
+app.MapMetering();
 app.MapTenantFeatures();
 app.MapNews();
 app.MapFiles();
+app.MapRequestAttachments();
 app.MapMedia();
 app.MapDetails();
 

@@ -1,3 +1,4 @@
+using Cube.Api.Modules.Requests.Domain;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -74,7 +75,7 @@ public static class DemoSeed
                     for (var r = 0; r < 3; r++) db.Add(new Reading { TenantId = tenant.Id, MeterId = meter.Id, PreviousValue = 1000 + r * 100, Value = 1100 + r * 100, Status = r == 2 ? "Submitted" : "Accepted", CreatedAt = now.AddMonths(r - 2) });
                 }
                 var subjects = new[] { "Заменить лампу в переговорной", "Проверить отопление офиса", "Согласовать перепланировку", "Уточнить начисления по аренде", "Выдать копию договора", "Обсудить продление аренды", "Повторная заявка на ремонт" };
-                var states = Rules.RequestStates;
+                var states = RequestRules.RequestStates;
                 string[] categoryCodes = ["electricity", "water-heating", "construction", "accounting", "rent", "termination", "construction"];
                 for (var i = 0; i < states.Length; i++)
                 {

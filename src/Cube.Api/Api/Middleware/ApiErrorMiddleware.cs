@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Cube.Api.Common.Identity;
 
 namespace Cube.Api.Api.Middleware;
 
@@ -13,16 +14,17 @@ internal sealed class ApiErrorMiddleware(RequestDelegate next, ILogger<ApiErrorM
         {
             await next(context);
         }
-        catch (Exception error) when (error is ApiError or DbUpdateException or BadHttpRequestException)
+        catch (Exception error) when (error is ApiError or TenantContextRequiredException or DbUpdateException or BadHttpRequestException)
         {
             var status = error switch
             {
                 ApiError expected => expected.Status,
+                TenantContextRequiredException => StatusCodes.Status403Forbidden,
                 DbUpdateException => StatusCodes.Status409Conflict,
                 BadHttpRequestException badRequest => badRequest.StatusCode,
                 _ => StatusCodes.Status500InternalServerError
             };
-            var code = error is ApiError apiError ? apiError.Message
+            var code = error is ApiError or TenantContextRequiredException ? error.Message
                 : error is DbUpdateException ? "database_constraint_or_concurrency_conflict"
                 : "invalid_request";
 

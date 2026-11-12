@@ -1,3 +1,4 @@
+using Cube.Api.Modules.Identity.Domain;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,7 +18,7 @@ public static class AuthEndpoints
         var g = app.MapGroup("/api/v1/auth").AddEndpointFilter<InputValidationFilter>().WithTags("Authentication").RequireRateLimiting("auth");
         g.MapPost("/register", async (Register input, UserManager<User> users, CubeDb db, CancellationToken ct) =>
         {
-            Guard.Email(input.Email); Guard.That(Rules.ValidInn(input.Inn), "invalid_inn");
+            Guard.Email(input.Email); Guard.That(InnRules.ValidInn(input.Inn), "invalid_inn");
             var u = new User { Id = Guid.NewGuid(), UserName = Guard.Text(input.Login, "login", 100), Email = input.Email, FullName = Guard.Text(input.FullName, "name"), RequestedOrganization = Guard.Text(input.Organization, "organization"), RequestedInn = input.Inn, PhoneNumber = Guard.Text(input.Phone, "phone", 40) };
             var result = await users.CreateAsync(u, input.Password);
             Guard.That(result.Succeeded, "registration_invalid_or_duplicate");

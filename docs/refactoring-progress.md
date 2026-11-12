@@ -21,3 +21,12 @@
 - Преимущество: persistence и сценариям доступен текущий пользователь без HTTP-зависимости; DTO можно переносить между namespaces без потери validation.
 - Проверено: полный Release suite — **67 passed, 0 failed, 0 skipped**, без compiler warnings; OpenAPI и migration snapshot совпадают. Отдельные тесты проверяют actor до/после authentication, audit без HTTP и validation контракта вне Cube.Api.
 - Риски: прежняя классификация DbUpdateException и поведение Response.HasStarted намеренно сохранены. Интерфейс текущего пользователя не заменяет проверки доступа к конкретным ресурсам.
+
+## 3. Заявки, показания и rental inquiry
+
+- Обнаружено: endpoint-классы взаимно использовали query/review/factory helpers, multipart-ответ совмещал parsing и сохранение; Events выполнял синхронный DB I/O.
+- Решение: отдельные обработчики создания, статуса, назначения, сообщения, attachment, multipart reply, submission/review показаний; независимые resource visibility queries; чистая фабрика/правила и `Outcome<T>` для ожидаемых ошибок. HTTP mapping остаётся в API. RentalInquiry — отдельный application workflow.
+- Изменено: модульные DI регистрации Requests/Metering; actor/tenant/lease scopes; async notifications с CancellationToken; resource selection до multipart parsing; FileWriteBatch и файловый порт с rollback, включая partial writes/cancellation. Правила INN и счетов получили собственных владельцев. C# request DTO перенесены с сохранением имён схем и wire fields.
+- Преимущество: сценарии вызываются без HttpContext/IResult; исключён цикл RequestEndpoints/StaffEndpoints, общий factory не принадлежит HTTP. Транзакции, optimistic concurrency, CAS review, notifications/outbox/audit сохраняются.
+- Проверено: **93 passed, 0 failed, 0 skipped**, Release без warnings/errors; OpenAPI 94/110 и EF snapshot совпадают. Добавлены pure rule cases, прямой вызов application handler с реальным PostgreSQL без HTTP, проверки отказа без side effects, UTC lease boundaries, файловые failure/cancellation tests. Architecture tests анализируют signatures и IL, включая async state machines.
+- Риски: разрешён прямой EF в feature handlers; одна сборка даёт логические границы, а не строгую compile-time изоляцию. EF entity namespaces пока сохранены ради metadata. Infrastructure/Identity EF-зависимости не считаются HTTP-типами в application boundary test. Остальные модули требуют последовательной обработки.

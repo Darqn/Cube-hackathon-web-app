@@ -19,7 +19,7 @@ public sealed class ContractTests(ApiFixture fixture) : IClassFixture<ApiFixture
         var actual = JsonNode.Parse(await client.GetStringAsync("/openapi/v1.json"))!.AsObject();
         actual.Remove("servers"); // The host/port is supplied by the deployment, not the API contract.
         var expected = JsonNode.Parse(await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Baselines", "openapi.json")));
-        Assert.True(JsonNode.DeepEquals(expected, actual), "OpenAPI changed. Review the contract diff; do not regenerate the baseline to hide a regression.");
+        Assert.True(JsonNode.DeepEquals(expected, actual), "OpenAPI changed:\n" + string.Join("\n", Differences(expected, actual, "$" ).Take(12)));
     }
 
     [Fact]
@@ -146,6 +146,22 @@ public sealed class ContractTests(ApiFixture fixture) : IClassFixture<ApiFixture
 
     private static void AssertFields(JsonElement body, params string[] expected) =>
         Assert.Equal(expected.Order(), body.EnumerateObject().Select(x => x.Name).Order());
+
+    private static IEnumerable<string> Differences(JsonNode? expected, JsonNode? actual, string path)
+    {
+        if (JsonNode.DeepEquals(expected, actual)) yield break;
+        if (expected is JsonObject left && actual is JsonObject right)
+        {
+            foreach (var key in left.Select(x => x.Key).Union(right.Select(x => x.Key)))
+                foreach (var difference in Differences(left[key], right[key], path + "/" + key)) yield return difference;
+        }
+        else if (expected is JsonArray leftArray && actual is JsonArray rightArray && leftArray.Count == rightArray.Count)
+        {
+            for (var index = 0; index < leftArray.Count; index++)
+                foreach (var difference in Differences(leftArray[index], rightArray[index], path + "/" + index)) yield return difference;
+        }
+        else yield return $"{path}: {expected?.ToJsonString()} -> {actual?.ToJsonString()}";
+    }
 
     private static async Task AssertProblem(HttpResponseMessage response, HttpStatusCode status, string code)
     {

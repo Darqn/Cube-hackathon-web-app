@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Cube.Api.Common.Storage;
+using Cube.Api.Infrastructure.Storage;
 
 namespace Cube.Api.Infrastructure;
 
@@ -13,6 +15,8 @@ public static class DependencyInjection
         services.AddSingleton<IPaymentGateway>(s => s.GetRequiredService<UnconfiguredIntegrations>());
         services.AddSingleton<IEmailGateway>(s => s.GetRequiredService<UnconfiguredIntegrations>());
         services.AddSingleton<PrivateStorage>();
+        services.AddSingleton<IPrivateFileStore>(s => s.GetRequiredService<PrivateStorage>());
+        services.AddScoped<FileWriteBatch>();
         return services;
     }
 }

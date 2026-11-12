@@ -1,3 +1,4 @@
+using Cube.Api.Modules.Identity.Domain;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 namespace Cube.Api;
@@ -78,7 +79,7 @@ public static class AdminEndpoints
         g.MapGet("/integrations", () => new { Accounting = "NotConfigured", Bitrix = "NotConfigured", Payments = "NotConfigured", Email = "NotConfigured", AutomaticDelivery = false });
         g.MapGet("/integration-handoffs", async (CubeDb db, int? page, int? size, CancellationToken ct) => await db.Outbox.AsNoTracking().OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct));
     }
-    private static void SetTenant(Tenant t, TenantInput i) { Guard.That(Rules.ValidInn(i.Inn), "invalid_inn"); t.Name = Guard.Text(i.Name, "name"); t.Inn = i.Inn; t.ContactName = Guard.Text(i.ContactName, "contact"); t.Email = Guard.Email(i.Email); t.Phone = Guard.Text(i.Phone, "phone", 40); }
+    private static void SetTenant(Tenant t, TenantInput i) { Guard.That(InnRules.ValidInn(i.Inn), "invalid_inn"); t.Name = Guard.Text(i.Name, "name"); t.Inn = i.Inn; t.ContactName = Guard.Text(i.ContactName, "contact"); t.Email = Guard.Email(i.Email); t.Phone = Guard.Text(i.Phone, "phone", 40); }
     private static void SetPremises(Premises p, PremisesInput i)
     {
         Guard.That(i.Type is "Office" or "Warehouse" or "Retail", "invalid_type"); Guard.That(i.Status is "Available" or "Occupied" or "Reserved" or "Unavailable", "invalid_status"); Guard.That(i.Area > 0 && i.MonthlyRent >= 0, "invalid_dimensions");

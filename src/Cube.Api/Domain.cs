@@ -83,24 +83,3 @@ public sealed class NewsReceipt : Owned { public Guid NewsId { get; set; } publi
 public sealed class Notification : Owned { public string? DeduplicationKey { get; set; } public string Kind { get; set; } = ""; public string Text { get; set; } = ""; public Guid? ResourceId { get; set; } public Guid? UserId { get; set; } public bool Read { get; set; } }
 public sealed class Outbox : Entity { public string Provider { get; set; } = ""; public string Kind { get; set; } = ""; public Guid ResourceId { get; set; } public string Status { get; set; } = "AwaitingConfiguration"; public string? LastError { get; set; } public int Attempts { get; set; } }
 public sealed class Audit : Entity { public Guid ActorId { get; set; } public string Action { get; set; } = ""; public Guid ResourceId { get; set; } }
-public static class Rules
-{
-    public static readonly string[] RequestStates = ["New", "Accepted", "InProgress", "Clarification", "Completed", "Closed", "Rejected"];
-    public static bool CanTransition(string from, string to) => (from, to) switch
-    {
-        ("New", "Accepted" or "Rejected") => true,
-        ("Accepted", "InProgress" or "Rejected") => true,
-        ("InProgress", "Clarification" or "Completed" or "Rejected") => true,
-        ("Clarification", "InProgress" or "Rejected") => true,
-        ("Completed", "Closed" or "InProgress") => true,
-        _ => false
-    };
-    public static string InvoiceStatus(Invoice i, DateOnly today) => i.Paid >= i.Amount ? "Paid" : i.DueOn < today ? "Overdue" : i.Paid > 0 ? "PartiallyPaid" : "Unpaid";
-    public static bool ValidInn(string value)
-    {
-        if ((value.Length != 10 && value.Length != 12) || value.Any(c => c < '0' || c > '9') || value.All(c => c == '0')) return false;
-        int Check(int[] weights) => weights.Select((w, i) => w * (value[i] - '0')).Sum() % 11 % 10;
-        return value.Length == 10 ? Check([2, 4, 10, 3, 5, 9, 4, 6, 8]) == value[9] - '0'
-            : Check([7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) == value[10] - '0' && Check([3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) == value[11] - '0';
-    }
-}

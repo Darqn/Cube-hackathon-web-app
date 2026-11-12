@@ -4,6 +4,11 @@ using Cube.Api.Api.Middleware;
 using Cube.Api.Common.Identity;
 using Cube.Api.Infrastructure;
 using Cube.Api.Modules.Identity;
+using Cube.Api.Modules.Requests;
+using Cube.Api.Modules.Metering;
+using Cube.Api.Modules.Property;
+using Cube.Api.Infrastructure.Persistence;
+using Cube.Api.Workflows;
 using Microsoft.AspNetCore.RateLimiting;
 
 namespace Cube.Api.Api.Hosting;
@@ -17,14 +22,19 @@ public static class CubeHostingExtensions
         builder.Services.AddScoped<ICurrentActor, HttpCurrentActor>();
         builder.Services.AddInfrastructure(builder.Configuration);
         builder.Services.AddIdentityModule();
+        builder.Services.AddRequestsModule();
+        builder.Services.AddMeteringModule();
+        builder.Services.AddScoped<TenantScope>();
+        builder.Services.AddScoped<ActiveLeases>();
+        builder.Services.AddScoped<RentalInquiryWorkflow>();
         builder.Services.AddScoped<Access>();
         builder.Services.AddScoped<PaymentLedger>();
         builder.Services.AddOpenApi(); builder.Services.AddProblemDetails();
         builder.Services.AddRateLimiter(o =>
         {
-    o.RejectionStatusCode = 429;
-    o.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = builder.Configuration.GetValue<int?>("RateLimits:AuthPermitLimit") ?? 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
-    o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context => RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 300, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+            o.RejectionStatusCode = 429;
+            o.AddPolicy("auth", context => RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = builder.Configuration.GetValue<int?>("RateLimits:AuthPermitLimit") ?? 20, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+            o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context => RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions { PermitLimit = 300, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
         });
         builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = 21 * 1024 * 1024);
         builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o => o.MultipartBodyLengthLimit = 21 * 1024 * 1024);

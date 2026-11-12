@@ -66,7 +66,7 @@ public sealed class EmployeeTests(ApiFixture f) : IClassFixture<ApiFixture>
     public async Task Notification_access_is_revoked_when_request_is_reassigned()
     {
         using var admin = await f.As("admin"); using var staff = await f.As("staff"); using var tenant = await f.As("tenant-a");
-        Guid id; using (var s = f.Services.CreateScope()) { var db = s.ServiceProvider.GetRequiredService<CubeDb>(); var r = new ServiceRequest { TenantId = f.TenantA, CategoryId = f.Category, AssigneeId = f.Staff, Subject = "Scoped notification", Description = "Test" }; db.Requests.Add(r); Events.NotifyStaff(db, f.Staff, f.TenantA, "StaffRequestAssigned", r.Id, "Assigned"); await db.SaveChangesAsync(); id = r.Id; }
+        Guid id; using (var s = f.Services.CreateScope()) { var db = s.ServiceProvider.GetRequiredService<CubeDb>(); var r = new ServiceRequest { TenantId = f.TenantA, CategoryId = f.Category, AssigneeId = f.Staff, Subject = "Scoped notification", Description = "Test" }; db.Requests.Add(r); await Events.NotifyStaffAsync(db, f.Staff, f.TenantA, "StaffRequestAssigned", r.Id, "Assigned", default); await db.SaveChangesAsync(); id = r.Id; }
         (await tenant.PostAsJsonAsync($"/api/v1/requests/{id}/messages", new { Text = "Tenant update" })).EnsureSuccessStatusCode();
         var inbox = await staff.GetFromJsonAsync<JsonElement>("/api/v1/staff/notifications?size=100"); var notice = inbox.EnumerateArray().First(n => n.GetProperty("resourceId").GetGuid() == id); var noticeId = notice.GetProperty("id").GetGuid();
         (await staff.PostAsync($"/api/v1/staff/notifications/{noticeId}/read", null)).EnsureSuccessStatusCode();
@@ -101,7 +101,7 @@ public sealed class EmployeeTests(ApiFixture f) : IClassFixture<ApiFixture>
         var old = await Route(f.Staff); try
         {
             using var tenant = await f.As("tenant-a"); using var staff = await f.As("staff"); using var form = new MultipartFormDataContent(); form.Add(new ByteArrayContent(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10, 0 }), "file", "meter.png"); var upload = await tenant.PostAsync("/api/v1/files", form); upload.EnsureSuccessStatusCode(); var fid = (await upload.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid(); var id = await Reading();
-            using (var s = f.Services.CreateScope()) { var db = s.ServiceProvider.GetRequiredService<CubeDb>(); var r = (await db.Readings.FindAsync(id))!; r.PhotoId = fid; Events.NotifyReadingStaff(db, (await db.Meters.FindAsync(r.MeterId))!, r); await db.SaveChangesAsync(); }
+            using (var s = f.Services.CreateScope()) { var db = s.ServiceProvider.GetRequiredService<CubeDb>(); var r = (await db.Readings.FindAsync(id))!; r.PhotoId = fid; await Events.NotifyReadingStaffAsync(db, (await db.Meters.FindAsync(r.MeterId))!, r, default); await db.SaveChangesAsync(); }
             Assert.Equal(HttpStatusCode.OK, (await staff.GetAsync($"/api/v1/staff/readings/{id}/photo")).StatusCode); Assert.Contains(id.ToString(), await staff.GetStringAsync("/api/v1/staff/notifications?size=100"));
             await Route(null); Assert.Equal(HttpStatusCode.NotFound, (await staff.GetAsync($"/api/v1/staff/readings/{id}/photo")).StatusCode); Assert.DoesNotContain(id.ToString(), await staff.GetStringAsync("/api/v1/staff/notifications?size=100"));
         }

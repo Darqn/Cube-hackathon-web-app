@@ -1,9 +1,16 @@
+using Cube.Api.Contracts;
 using System.IO.Compression;
 using Microsoft.EntityFrameworkCore;
 namespace Cube.Api;
 
-public sealed class PrivateStorage(IConfiguration config, IWebHostEnvironment environment)
+public sealed class PrivateStorage(IConfiguration config, IWebHostEnvironment environment) : Cube.Api.Common.Storage.IPrivateFileStore
 {
+    public Task WriteAsync(string key, byte[] bytes, CancellationToken ct)
+    {
+        Directory.CreateDirectory(Root);
+        return File.WriteAllBytesAsync(PathFor(key), bytes, ct);
+    }
+    public void Delete(string key) => File.Delete(PathFor(key));
     public string Root { get; } = Path.GetFullPath(config["Files:Root"] ?? Path.Combine(environment.ContentRootPath, ".data", "files"));
     public bool AllowDevelopmentFiles => environment.IsDevelopment() && config.GetValue<bool>("Files:AllowUnscannedDevelopmentUploads");
     public string PathFor(string key) { Guard.That(key.Length == 32 && key.All(Uri.IsHexDigit), "invalid_storage_key"); return Path.Combine(Root, key); }
@@ -73,20 +80,14 @@ public static class FileEndpoints
         {
             var d = await a.Own<Document>().SingleOrDefaultAsync(x => x.Id == id && !x.Archived, ct) ?? throw new ApiError(404, "document_not_found"); return await Download(d.FileId, a, db, storage, ct);
         });
-        g.MapPost("/requests/{id:guid}/attachments", async (Guid id, AttachmentInput i, Access a, CubeDb db, CancellationToken ct) =>
-        {
-            var r = await a.Request(id, ct); Guard.That(a.Admin || !a.Staff, "staff_upload_forbidden", 403); Guard.That(r.Status is not "Closed" and not "Rejected", "request_closed", 409);
-            Guard.That(await db.Files.AnyAsync(x => x.Id == i.FileId && x.TenantId == r.TenantId && x.State == "Ready", ct), "file_not_found", 404);
-            var at = new Attachment { TenantId = r.TenantId, RequestId = id, FileId = i.FileId }; db.Attachments.Add(at); Events.Queue(db, "Bitrix", "AttachmentAdded", at.Id); if (r.AssigneeId != a.UserId) Events.NotifyStaff(db, r.AssigneeId, r.TenantId, "StaffRequestAttachment", r.Id, "Добавлено вложение: " + r.Subject); await db.SaveChangesAsync(ct); return Results.Created($"/api/v1/requests/{id}", new { at.Id, at.FileId });
-        });
         g.MapGet("/admin/documents", async (Guid? tenantId, CubeDb db, int? page, int? size, CancellationToken ct) => await db.Documents.Where(x => tenantId == null || x.TenantId == tenantId).OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct)).RequireAuthorization("Admin");
         g.MapPost("/admin/documents", async (DocumentInput i, CubeDb db, CancellationToken ct) =>
         {
             Guard.That(new[] { "Contract", "Addendum", "Statement", "Act", "Invoice", "UPD", "Other", "Template" }.Contains(i.Kind), "invalid_document_kind"); await ValidateReferences(i.TenantId, i.FileId, i.LeaseId, i.PremisesId, db, ct);
-            var d = new Document { TenantId = i.TenantId, FileId = i.FileId, Title = Guard.Text(i.Title, "title"), Kind = i.Kind, Number = i.Number, DocumentDate = i.DocumentDate, LeaseId = i.LeaseId, PremisesId = i.PremisesId }; db.Documents.Add(d); Events.Notify(db, d.TenantId, "DocumentAdded", d.Id, "A new document is available"); await db.SaveChangesAsync(ct); return Results.Created($"/api/v1/admin/documents/{d.Id}", d);
+            var d = new Document { TenantId = i.TenantId, FileId = i.FileId, Title = Guard.Text(i.Title, "title"), Kind = i.Kind, Number = i.Number, DocumentDate = i.DocumentDate, LeaseId = i.LeaseId, PremisesId = i.PremisesId }; db.Documents.Add(d); await Events.NotifyAsync(db, d.TenantId, "DocumentAdded", d.Id, "A new document is available", ct); await db.SaveChangesAsync(ct); return Results.Created($"/api/v1/admin/documents/{d.Id}", d);
         }).RequireAuthorization("Admin");
         g.MapPut("/admin/documents/{id:guid}/archive", async (Guid id, ArchiveInput i, CubeDb db, CancellationToken ct) => { var d = await db.Documents.FindAsync([id], ct) ?? throw new ApiError(404, "document_not_found"); d.Archived = i.Archived; await db.SaveChangesAsync(ct); return Results.NoContent(); }).RequireAuthorization("Admin");
-        g.MapPut("/admin/statements/{id:guid}/review", async (Guid id, RequestEndpoints.ReviewInput i, CubeDb db, CancellationToken ct) => { Guard.That(i.Status is "Accepted" or "Rejected", "invalid_status"); var d = await db.Documents.SingleOrDefaultAsync(x => x.Id == id && x.Kind == "Statement", ct) ?? throw new ApiError(404, "statement_not_found"); d.Status = i.Status; Guard.Text(i.Reason, "reason", 2000); Events.Notify(db, d.TenantId, "StatementReviewed", d.Id, i.Reason); await db.SaveChangesAsync(ct); return Results.Ok(d); }).RequireAuthorization("Admin");
+        g.MapPut("/admin/statements/{id:guid}/review", async (Guid id, ReviewInput i, CubeDb db, CancellationToken ct) => { Guard.That(i.Status is "Accepted" or "Rejected", "invalid_status"); var d = await db.Documents.SingleOrDefaultAsync(x => x.Id == id && x.Kind == "Statement", ct) ?? throw new ApiError(404, "statement_not_found"); d.Status = i.Status; Guard.Text(i.Reason, "reason", 2000); await Events.NotifyAsync(db, d.TenantId, "StatementReviewed", d.Id, i.Reason, ct); await db.SaveChangesAsync(ct); return Results.Ok(d); }).RequireAuthorization("Admin");
     }
     private static async Task ValidateReferences(Guid tenant, Guid file, Guid? lease, Guid? premises, CubeDb db, CancellationToken ct)
     {

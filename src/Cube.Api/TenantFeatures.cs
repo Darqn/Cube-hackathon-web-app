@@ -1,3 +1,5 @@
+using Cube.Api.Modules.Billing.Domain;
+using Cube.Api.Workflows;
 using Microsoft.EntityFrameworkCore;
 namespace Cube.Api;
 
@@ -27,7 +29,7 @@ public static class TenantEndpoints
         {
             Guard.That(await db.Tenants.AnyAsync(x => x.Id == i.TenantId, ct), "tenant_not_found", 404); Guard.That(i.Amount > 0 && decimal.Round(i.Amount, 2) == i.Amount && i.DueOn >= i.IssuedOn, "invalid_invoice"); Guard.That(i.Kind is "Rent" or "Utilities" or "VehicleAccess" or "Other", "invalid_kind");
             if (i.FileId is Guid f) Guard.That(await db.Files.AnyAsync(x => x.Id == f && x.TenantId == i.TenantId && x.State == "Ready" && x.ContentType == "application/pdf", ct), "invalid_invoice_file");
-            var v = new Invoice { TenantId = i.TenantId, ExternalId = $"manual:{Guid.NewGuid()}", Number = Guard.Text(i.Number, "number"), Kind = i.Kind, IssuedOn = i.IssuedOn, DueOn = i.DueOn, Purpose = Guard.Text(i.Purpose, "purpose", 1000), Amount = i.Amount, FileId = i.FileId }; db.Invoices.Add(v); Events.Notify(db, i.TenantId, "InvoiceCreated", v.Id, "A new invoice is available"); await db.SaveChangesAsync(ct); return Results.Created($"/api/v1/admin/invoices/{v.Id}", v);
+            var v = new Invoice { TenantId = i.TenantId, ExternalId = $"manual:{Guid.NewGuid()}", Number = Guard.Text(i.Number, "number"), Kind = i.Kind, IssuedOn = i.IssuedOn, DueOn = i.DueOn, Purpose = Guard.Text(i.Purpose, "purpose", 1000), Amount = i.Amount, FileId = i.FileId }; db.Invoices.Add(v); await Events.NotifyAsync(db, i.TenantId, "InvoiceCreated", v.Id, "A new invoice is available", ct); await db.SaveChangesAsync(ct); return Results.Created($"/api/v1/admin/invoices/{v.Id}", v);
         }).RequireAuthorization("Admin");
         g.MapGet("/admin/invoices", async (Guid? tenantId, CubeDb db, int? page, int? size, CancellationToken ct) => await db.Invoices.Where(x => tenantId == null || x.TenantId == tenantId).OrderByDescending(x => x.IssuedOn).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct)).RequireAuthorization("Admin");
         g.MapGet("/notifications", async (Access a, bool? unreadOnly, int? page, int? size, CancellationToken ct) => await a.Own<Notification>().Where(x => (x.UserId == null || x.UserId == a.UserId) && (unreadOnly != true || !x.Read)).OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct));
@@ -44,13 +46,10 @@ public static class TenantEndpoints
             return Results.Ok(new { Total = await q.CountAsync(ct), Items = await q.Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct) });
         });
         g.MapGet("/listings/{id:guid}", async (Guid id, CubeDb db, CancellationToken ct) => await (from l in db.Listings join p in db.Premises on l.PremisesId equals p.Id where l.Id == id && l.Published && !l.Archived && (p.Status == "Available" || p.Status == "Reserved") select new { Listing = l, Premises = p }).SingleOrDefaultAsync(ct) is { } item ? Results.Ok(item) : Results.NotFound());
-        g.MapPost("/listings/{id:guid}/inquiries", async (Guid id, InquiryInput i, Access a, CubeDb db, CancellationToken ct) =>
+        g.MapPost("/listings/{id:guid}/inquiries", async (Guid id, InquiryInput i, RentalInquiryWorkflow workflow, HttpContext context, CancellationToken ct) =>
         {
-            Guard.That(!a.Staff, "tenant_required", 403); var existing = await db.Inquiries.SingleOrDefaultAsync(x => x.TenantId == a.TenantId && x.ListingId == id, ct); if (existing is not null) return Results.Ok(existing);
-            var listing = await db.Listings.SingleOrDefaultAsync(x => x.Id == id && x.Published && !x.Archived, ct) ?? throw new ApiError(404, "listing_not_found"); Guard.That(await db.Premises.AnyAsync(x => x.Id == listing.PremisesId && x.Status == "Available", ct), "listing_unavailable", 409);
-            var category = await db.Categories.SingleAsync(x => x.Code == "rent", ct);
-            var r = RequestEndpoints.NewRequest(new(category.Id, null, $"Rental inquiry: {listing.Title}", Guard.Text(i.Message, "message", 10000), i.ContactName, i.Phone, i.Email), a.TenantId, category);
-            db.Requests.Add(r); Events.NotifyStaff(db, r.AssigneeId, r.TenantId, "StaffRequestAssigned", r.Id, "Новая заявка на помещение: " + r.Subject); var inquiry = new ListingInquiry { TenantId = a.TenantId, ListingId = id, RequestId = r.Id }; db.Inquiries.Add(inquiry); Events.Queue(db, "Bitrix", "RequestCreated", r.Id); await db.SaveChangesAsync(ct); return Results.Created($"/api/v1/requests/{r.Id}", inquiry);
+            var result = await workflow.Handle(id, i.ContactName, i.Phone, i.Email, i.Message, ct);
+            return result.ToHttpResult(context, r => r.Created ? Results.Created($"/api/v1/requests/{r.Inquiry.RequestId}", r.Inquiry) : Results.Ok(r.Inquiry));
         });
         g.MapGet("/me/listing-inquiries", async (Access a, int? page, int? size, CancellationToken ct) => await a.Own<ListingInquiry>().OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct));
         g.MapGet("/admin/listings", async (CubeDb db, int? page, int? size, CancellationToken ct) => await db.Listings.OrderByDescending(x => x.CreatedAt).ThenBy(x => x.Id).Skip((Guard.Page(page) - 1) * Guard.Size(size)).Take(Guard.Size(size)).ToListAsync(ct)).RequireAuthorization("Admin");
@@ -58,5 +57,5 @@ public static class TenantEndpoints
         g.MapPut("/admin/listings/{id:guid}", async (Guid id, ListingInput i, CubeDb db, CancellationToken ct) => { var l = await db.Listings.FindAsync([id], ct) ?? throw new ApiError(404, "listing_not_found"); Guard.That(l.PremisesId == i.PremisesId, "cannot_change_listing_premises"); l.Title = Guard.Text(i.Title, "title"); l.Description = Guard.Text(i.Description, "description", 10000); l.Published = i.Published; await db.SaveChangesAsync(ct); return Results.Ok(l); }).RequireAuthorization("Admin");
         g.MapDelete("/admin/listings/{id:guid}", async (Guid id, CubeDb db, CancellationToken ct) => { var l = await db.Listings.FindAsync([id], ct) ?? throw new ApiError(404, "listing_not_found"); l.Archived = true; l.Published = false; await db.SaveChangesAsync(ct); return Results.NoContent(); }).RequireAuthorization("Admin");
     }
-    private static object InvoiceDto(Invoice i, TimeProvider clock) => new { i.Id, i.Number, i.Kind, i.IssuedOn, i.DueOn, i.Purpose, i.Amount, i.Paid, Balance = i.Amount - i.Paid, i.Currency, i.FileId, Status = Rules.InvoiceStatus(i, DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime)), PaymentState = i.Paid >= i.Amount ? "Paid" : i.Paid > 0 ? "PartiallyPaid" : "Unpaid", CanPay = false };
+    private static object InvoiceDto(Invoice i, TimeProvider clock) => new { i.Id, i.Number, i.Kind, i.IssuedOn, i.DueOn, i.Purpose, i.Amount, i.Paid, Balance = i.Amount - i.Paid, i.Currency, i.FileId, Status = InvoiceRules.InvoiceStatus(i, DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime)), PaymentState = i.Paid >= i.Amount ? "Paid" : i.Paid > 0 ? "PartiallyPaid" : "Unpaid", CanPay = false };
 }
